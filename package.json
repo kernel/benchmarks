@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "bench": "tsx src/run.ts",
+    "bench:kernel": "tsx src/run.ts --provider kernel",
     "bench:e2b": "tsx src/run.ts --provider e2b",
     "bench:vercel": "tsx src/run.ts --provider vercel",
     "bench:blaxel": "tsx src/run.ts --provider blaxel",
@@ -23,6 +24,7 @@
     "@computesdk/hopx": "^0.2.10",
     "@computesdk/modal": "^1.8.29",
     "@computesdk/vercel": "^1.7.13",
+    "@onkernel/sdk": "^0.35.0",
     "computesdk": "^2.2.1",
     "dotenv": "^17.2.1"
   },
