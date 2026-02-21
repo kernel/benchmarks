@@ -1,0 +1,58 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-02-21T19:18:59.666Z",
+  "environment": {
+    "node": "v22.22.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "config": {
+    "iterations": 10,
+    "timeoutMs": 120000
+  },
+  "results": [
+    {
+      "provider": "kernel",
+      "iterations": [
+        {
+          "ttiMs": 294.49
+        },
+        {
+          "ttiMs": 253.3
+        },
+        {
+          "ttiMs": 205.4
+        },
+        {
+          "ttiMs": 325.84
+        },
+        {
+          "ttiMs": 302.06
+        },
+        {
+          "ttiMs": 243.83
+        },
+        {
+          "ttiMs": 237.35
+        },
+        {
+          "ttiMs": 296.42
+        },
+        {
+          "ttiMs": 200.2
+        },
+        {
+          "ttiMs": 216.15
+        }
+      ],
+      "summary": {
+        "ttiMs": {
+          "min": 200.2,
+          "max": 325.84,
+          "median": 248.56,
+          "avg": 257.5
+        }
+      }
+    }
+  ]
+}

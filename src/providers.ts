@@ -16,46 +16,6 @@ import type { ProviderConfig } from './types.js';
 export const providers: ProviderConfig[] = [
   // --- Direct mode (provider SDK packages) ---
   {
-    name: 'kernel',
-    requiredEnvVars: ['KERNEL_API_KEY'],
-    createCompute: () => {
-      const client = new Kernel({
-        apiKey: process.env.KERNEL_API_KEY!,
-        maxRetries: 0,
-      });
-      return {
-        sandbox: {
-          create: async () => {
-            const browser = await client.browsers.create({ timeout_seconds: 300 });
-            const id = browser.session_id;
-            return {
-              runCommand: async (cmd: string) => {
-                const parts = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [cmd];
-                const command = parts[0];
-                const args = parts.slice(1).map(a => a.replace(/^"|"$/g, ''));
-                while (true) {
-                  try {
-                    const r = await client.browsers.process.exec(id, { command, args });
-                    return {
-                      stdout: r.stdout_b64 ? Buffer.from(r.stdout_b64, 'base64').toString() : '',
-                      stderr: r.stderr_b64 ? Buffer.from(r.stderr_b64, 'base64').toString() : '',
-                      exitCode: r.exit_code,
-                    };
-                  } catch {
-                    continue;
-                  }
-                }
-              },
-              destroy: async () => {
-                await client.browsers.deleteByID(id);
-              },
-            };
-          },
-        },
-      };
-    },
-  },
-  {
     name: 'e2b',
     requiredEnvVars: ['E2B_API_KEY'],
     createCompute: () => e2b({ apiKey: process.env.E2B_API_KEY! }),
@@ -79,6 +39,39 @@ export const providers: ProviderConfig[] = [
     name: 'vercel',
     requiredEnvVars: ['VERCEL_TOKEN', 'VERCEL_TEAM_ID', 'VERCEL_PROJECT_ID'],
     createCompute: () => vercel({ token: process.env.VERCEL_TOKEN!, teamId: process.env.VERCEL_TEAM_ID!, projectId: process.env.VERCEL_PROJECT_ID! }),
+  },
+  {
+    name: 'kernel',
+    requiredEnvVars: ['KERNEL_API_KEY'],
+    createCompute: () => {
+      const client = new Kernel({
+        apiKey: process.env.KERNEL_API_KEY!,
+      });
+      return {
+        sandbox: {
+          create: async () => {
+            const browser = await client.browsers.create({ timeout_seconds: 300 });
+            const id = browser.session_id;
+            return {
+              runCommand: async (cmd: string) => {
+                const parts = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [cmd];
+                const command = parts[0];
+                const args = parts.slice(1).map(a => a.replace(/^"|"$/g, ''));
+                const r = await client.browsers.process.exec(id, { command, args });
+                return {
+                  stdout: r.stdout_b64 ? Buffer.from(r.stdout_b64, 'base64').toString() : '',
+                  stderr: r.stderr_b64 ? Buffer.from(r.stderr_b64, 'base64').toString() : '',
+                  exitCode: r.exit_code,
+                };
+              },
+              destroy: async () => {
+                await client.browsers.deleteByID(id);
+              },
+            };
+          },
+        },
+      };
+    },
   },
   // --- Automatic mode (via ComputeSDK gateway) ---
   {

@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "bench": "tsx src/run.ts",
-    "bench:kernel": "tsx src/run.ts --provider kernel",
     "bench:e2b": "tsx src/run.ts --provider e2b",
     "bench:vercel": "tsx src/run.ts --provider vercel",
     "bench:blaxel": "tsx src/run.ts --provider blaxel",
@@ -14,6 +13,7 @@
     "bench:railway": "tsx src/run.ts --provider railway",
     "bench:namespace": "tsx src/run.ts --provider namespace",
     "bench:render": "tsx src/run.ts --provider render",
+    "bench:kernel": "tsx src/run.ts --provider kernel",
     "update-readme": "tsx src/update-readme.ts",
     "generate-svg": "tsx src/generate-svg.ts"
   },
