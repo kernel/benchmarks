@@ -101,12 +101,6 @@ Each benchmark has a manually triggered workflow:
 gh workflow run kernel-mcp-clawbench.yml -f tasks=all -f concurrency=10
 ```
 
-The workflow reads repository or organization Actions secrets and variables:
-- **Secrets:** `KERNEL_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` (ClawBench's judge), `PURELY_MAIL_API_KEY`, `PURELY_MAIL_DOMAIN` (a secret so the mail domain stays out of logs), and optionally `BRAINTRUST_API_KEY`.
-- **Variables:** optionally `BRAINTRUST_PROJECT`.
-
-The judge endpoint and model are fixed in `_run.yml`. Organization secrets must be visible to this public repository. A repository secret overrides an organization secret with the same name, which is how a project-scoped `KERNEL_API_KEY` can replace an organization-wide one. Every benchmark's job sees all of these values.
-
 The job summary shows a table per arm. When Braintrust is configured, each run is also published there as one experiment with redacted trajectories. Raw job directories are never uploaded, because they contain task credentials.
 
 GitHub stops jobs after six hours. Arms still running then are reported as incomplete. Lower the task count or raise `concurrency` for large runs.
