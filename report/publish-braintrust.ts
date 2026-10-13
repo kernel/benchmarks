@@ -165,6 +165,12 @@ function taskInstruction(trial: BenchmarkTrial): unknown {
 // The suite's rewards, such as ClawBench's lenient and strict judgments, are
 // Braintrust scores so the experiment summary and comparisons show them.
 // Derived rates stay in metadata, where they remain filterable.
+// Tracebacks put the cause last, so keep the end of long errors.
+function errorTail(error: string): string {
+  const redacted = redactString(error, Number.MAX_SAFE_INTEGER);
+  return redacted.length > 2000 ? `…${redacted.slice(-2000)}` : redacted;
+}
+
 function trialScores(
   trial: BenchmarkTrial,
 ): Record<string, number> | undefined {
@@ -497,10 +503,10 @@ export function buildExperimentEvents(
         output: {
           reward: primaryReward?.value,
           rewardKey: primaryReward?.key,
-          error: trial.error ? redactString(trial.error, 400) : undefined,
+          error: trial.error ? errorTail(trial.error) : undefined,
         },
         expected: { reward: 1 },
-        error: trial.error ? redactString(trial.error, 400) : undefined,
+        error: trial.error ? errorTail(trial.error) : undefined,
         scores: trialScores(trial),
         metadata: trialMetadata(trial),
         metrics: metricRecord(trial),
