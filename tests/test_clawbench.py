@@ -21,3 +21,4 @@ def test_generate_runs_on_the_harbor_browser_without_tool_wiring(tmp_path):
     instruction = (task / "steps" / "run" / "instruction.md").read_text()
     assert "Harbor browser runtime" not in instruction
     assert "9223" not in instruction
+    assert "Reading files with shell commands" in instruction

@@ -23,7 +23,7 @@ INSTRUCTION = """
 ## Browser tools
 
 - Use the `kernel` MCP server's `execute_playwright_code` tool for all browser interaction. Wait for the server to finish initializing before starting; in Claude Code, call `WaitForMcpServers` if it is still pending.
-- Before your first browser call, read your browser's session ID from the file `/run/kernel-mcp/session-id` (reading this one file with a shell command is allowed) and pass it as `session_id` on every call.
+- Before your first browser call, read your browser's session ID from the file `/run/kernel-mcp/session-id` and pass it as `session_id` on every call.
 - Do not create, list, update, or delete browsers, and do not use Kernel managed auth.
 - Interact through page navigation and DOM/UI actions. Do not call `fetch`, `XMLHttpRequest`, Playwright request APIs, or other HTTP clients inside `execute_playwright_code`.
 """

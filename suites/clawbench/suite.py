@@ -28,6 +28,12 @@ IMAGE = Path(__file__).with_name("image")
 CLAWBENCH_BROWSER = "/app/src/harbor/kernel-browser.py "
 HARBOR_BROWSER = "/app/src/harbor/harbor-browser.py "
 RUNTIME_BLOCK = re.compile(r"\n---\nHarbor browser runtime:\n.*?\n---\n", re.DOTALL)
+# ClawBench forbids command-line tools, but agents without a file-read tool
+# need a shell to read the task's files.
+FILE_ACCESS = (
+    "\n---\nReading files with shell commands (for example under `./my-info/`) is "
+    "allowed. Do everything else through the browser.\n---\n"
+)
 
 
 def preflight() -> None:
@@ -82,4 +88,4 @@ def _remove_tool_wiring(task_dir: Path) -> None:
     config["environment"].pop("mcp_servers", None)
     write_config(task_dir, config)
     for path in instructions(task_dir):
-        path.write_text(RUNTIME_BLOCK.sub("\n", path.read_text()))
+        path.write_text(RUNTIME_BLOCK.sub(FILE_ACCESS, path.read_text()))
