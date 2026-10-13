@@ -111,6 +111,8 @@ function skipSnapshotAttributes(text: string, start: number): number {
   return cursor;
 }
 
+const METHOD_CALL = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+\(/;
+
 function sensitiveAssignments(text: string): SensitiveAssignment[] {
   const assignments: SensitiveAssignment[] = [];
   for (let separator = 0; separator < text.length; separator += 1) {
@@ -144,6 +146,9 @@ function sensitiveAssignments(text: string): SensitiveAssignment[] {
     let end = valueCursor;
 
     if (quote === '"' || quote === "'") {
+      // A quote followed by a line break closes a label such as
+      // `"Email address:"`; the field has no value on this line.
+      if (lineEndsAfter(text, valueCursor + slashCount + 1)) continue;
       let openingSlashCount = 0;
       for (let cursor = keyStart - 2; text[cursor] === "\\"; cursor -= 1) {
         openingSlashCount += 1;
@@ -152,9 +157,6 @@ function sensitiveAssignments(text: string): SensitiveAssignment[] {
         !keyHasClosingQuote &&
         text[keyStart - 1] === quote &&
         openingSlashCount === slashCount;
-      if (quotedLabel && lineEndsAfter(text, valueCursor + slashCount + 1)) {
-        continue;
-      }
       if (quotedLabel) {
         valueCursor = skipSnapshotAttributes(
           text,
@@ -217,6 +219,8 @@ function sensitiveAssignments(text: string): SensitiveAssignment[] {
         }
         end += 1;
       }
+      // Code such as `cookie=page.getByRole(...)` is not a credential.
+      if (METHOD_CALL.test(text.slice(start))) continue;
       separator = Math.max(separator, end - 1);
     }
 
@@ -550,32 +554,24 @@ function assertTypedCallsRedacted(value: string): void {
 
 function assertSensitiveAssignmentsRedacted(value: string): void {
   const assignmentStart =
-    /(?:^|\\[nrt]|[^A-Za-z0-9_-])(?:\\*["'])?([A-Za-z0-9_-]+)(?:\\*["'])?\s*[:=]\s*/gi;
+    /(?:^|\\[nrt]|[^A-Za-z0-9_-])(\\*["'])?([A-Za-z0-9_-]+)(\\*["'])?\s*[:=]\s*/gi;
   for (const match of value.matchAll(assignmentStart)) {
-    if (!sensitiveField(match[1])) continue;
+    const [, openingQuote, key, closingQuote] = match;
+    if (!sensitiveField(key)) continue;
     const remainderStart = (match.index ?? 0) + match[0].length;
     const remainder = value.slice(remainderStart);
     const valueQuote = remainder.match(/^(\\*)(["'])/);
-    const separator = Math.max(
-      match[0].lastIndexOf(":"),
-      match[0].lastIndexOf("="),
-    );
+    // Like `"Password:"`: the separator sits inside a quoted label, and the
+    // quote after it closes the label rather than opening a value.
     const quotedLabel =
-      valueQuote &&
-      [...match[0].slice(0, separator)].filter(
-        (character) => character === valueQuote[2],
-      ).length %
-        2 ===
-        1;
+      valueQuote && !closingQuote && openingQuote?.endsWith(valueQuote[2]);
     if (
-      quotedLabel &&
-      lineEndsAfter(
-        value,
-        (match.index ?? 0) + match[0].length + valueQuote[0].length,
-      )
+      valueQuote &&
+      lineEndsAfter(value, remainderStart + valueQuote[0].length)
     ) {
       continue;
     }
+    if (!valueQuote && METHOD_CALL.test(remainder)) continue;
     let unquoted = remainder.replace(/^(?:\\*["'])?/, "");
     if (quotedLabel && valueQuote) {
       let valueStart = skipSnapshotAttributes(

@@ -46,6 +46,8 @@ interface AtifStep {
   metrics?: Record<string, unknown>;
 }
 
+const WITHHELD = "[WITHHELD]";
+
 interface BraintrustEvent {
   id: string;
   span_id: string;
@@ -492,10 +494,45 @@ export function buildExperimentEvents(
       events.push(...atifEvents(trial, rowId));
     }
   }
-  for (const event of events) {
+  const withheld = { count: 0 };
+  const safeEvents = events.map(
+    (event) => withholdUnsafe(event, withheld) as BraintrustEvent,
+  );
+  if (withheld.count > 0) {
+    console.warn(
+      `Withheld ${withheld.count} values that failed the redaction check`,
+    );
+  }
+  for (const event of safeEvents) {
     assertSafeToPublish(event, `event ${event.id}`);
   }
-  return events;
+  return safeEvents;
+}
+
+// Replace any string the redaction check rejects, so one unexpected value
+// costs that value rather than the whole experiment.
+function withholdUnsafe(value: unknown, withheld: { count: number }): unknown {
+  if (typeof value === "string") {
+    try {
+      assertSafeToPublish(value);
+      return value;
+    } catch {
+      withheld.count += 1;
+      return WITHHELD;
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => withholdUnsafe(entry, withheld));
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        withholdUnsafe(entry, withheld),
+      ]),
+    );
+  }
+  return value;
 }
 
 function experimentMetadata(arms: BenchmarkArm[]): Record<string, unknown> {
