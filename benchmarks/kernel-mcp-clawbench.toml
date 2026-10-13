@@ -1,0 +1,3 @@
+# Kernel MCP on ClawBench's real-website tasks, across agents and browser configuration.
+suite = "clawbench"
+arms = ["codex-kernel-mcp", "codex-kernel-mcp-site-config", "claude-kernel-mcp"]

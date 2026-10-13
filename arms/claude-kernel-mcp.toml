@@ -1,0 +1,8 @@
+# Claude Code driving the browser through Kernel MCP, with a fixed stealth browser.
+agent = "claude-code"
+model = "claude-sonnet-5"
+agent_version = "2.1.238"
+toolset = "kernel-mcp-local"
+
+[browser]
+config = { stealth = true }

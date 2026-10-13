@@ -1,0 +1,23 @@
+#!/bin/sh
+# Start Redis and the Kernel MCP server in the background, then run the
+# container's command. Harbor passes the trial's Kernel API key and browser
+# session in the environment; agents may not pass that environment on to MCP
+# servers they launch, so both are also written to files.
+set -eu
+
+state=/run/kernel-mcp
+logs=/var/log/kernel-mcp
+mkdir -p "$state" "$logs"
+printf '%s' "${KERNEL_API_KEY:-}" >"$state/api-key"
+chmod 0600 "$state/api-key"
+printf '%s\n' "${KERNEL_SESSION_ID:-}" >"$state/session-id"
+
+redis-server --daemonize yes --bind 127.0.0.1 --port 6379 --dir /tmp \
+  --logfile "$logs/redis.log"
+(
+  cd /opt/kernel-mcp-server
+  API_BASE_URL=${KERNEL_BASE_URL:-https://api.onkernel.com} \
+    exec ./node_modules/.bin/next start -p 3002
+) >"$logs/server.log" 2>&1 &
+
+exec "$@"

@@ -1,0 +1,21 @@
+#!/bin/sh
+# stdio MCP server for the agent: waits for the local Kernel MCP server and
+# proxies to it with the project API key. Nothing may be written to stdout
+# before mcp-remote starts, because stdout carries the MCP protocol.
+set -eu
+
+KERNEL_API_KEY=${KERNEL_API_KEY:-$(cat /run/kernel-mcp/api-key)}
+for _ in $(seq 1 120); do
+  if curl -fsS -o /dev/null -X POST http://127.0.0.1:3002/mcp \
+    -H "Authorization: Bearer $KERNEL_API_KEY" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    --data '{"jsonrpc":"2.0","id":"ready","method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"kernel-mcp","version":"1.0.0"}}}' \
+    2>/dev/null; then
+    exec mcp-remote http://127.0.0.1:3002/mcp --header "Authorization: Bearer $KERNEL_API_KEY"
+  fi
+  sleep 1
+done
+echo "Kernel MCP server did not become ready" >&2
+tail -50 /var/log/kernel-mcp/server.log >&2 || true
+exit 1
