@@ -101,11 +101,11 @@ Each benchmark has a manually triggered workflow:
 gh workflow run kernel-mcp-clawbench.yml -f tasks=all -f concurrency=10
 ```
 
-Credentials come from the repository's `benchmarks` environment:
-- **Secrets:** `KERNEL_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PURELY_MAIL_API_KEY`, `CLAWBENCH_JUDGE_API_KEY`, `BRAINTRUST_API_KEY`.
-- **Variables:** `PURELY_MAIL_DOMAIN`, `CLAWBENCH_JUDGE_BASE_URL`, `CLAWBENCH_JUDGE_MODEL`, `CLAWBENCH_JUDGE_API_TYPE`, `BRAINTRUST_PROJECT`.
+The workflow reads repository or organization Actions secrets and variables:
+- **Secrets:** `KERNEL_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` (ClawBench's judge), `PURELY_MAIL_API_KEY`, and optionally `BRAINTRUST_API_KEY`.
+- **Variables:** `PURELY_MAIL_DOMAIN`, and optionally `BRAINTRUST_PROJECT`.
 
-Every benchmark's job sees all of them, so only add credentials you are comfortable sharing across benchmarks.
+The judge endpoint and model are fixed in `_run.yml`. Organization secrets must be visible to this public repository. A repository secret overrides an organization secret with the same name, which is how a project-scoped `KERNEL_API_KEY` can replace an organization-wide one. Every benchmark's job sees all of these values.
 
 The job summary shows a table per arm. When Braintrust is configured, each run is also published there as one experiment with redacted trajectories. Raw job directories are never uploaded, because they contain task credentials.
 

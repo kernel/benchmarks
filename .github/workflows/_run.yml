@@ -35,9 +35,9 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    # Holds the credentials below. Every secret is exposed to every benchmark;
-    # suites and agents only read the ones they need.
-    environment: benchmarks
+    # Repository and organization secrets; a repository secret overrides an
+    # organization secret with the same name. Every benchmark sees all of
+    # them; suites and agents only read the ones they need.
     env:
       BENCHMARK_NAME: ${{ inputs.benchmark }}
       KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
@@ -45,10 +45,11 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       PURELY_MAIL_API_KEY: ${{ secrets.PURELY_MAIL_API_KEY }}
       PURELY_MAIL_DOMAIN: ${{ vars.PURELY_MAIL_DOMAIN }}
-      CLAWBENCH_JUDGE_BASE_URL: ${{ vars.CLAWBENCH_JUDGE_BASE_URL }}
-      CLAWBENCH_JUDGE_API_KEY: ${{ secrets.CLAWBENCH_JUDGE_API_KEY }}
-      CLAWBENCH_JUDGE_MODEL: ${{ vars.CLAWBENCH_JUDGE_MODEL }}
-      CLAWBENCH_JUDGE_API_TYPE: ${{ vars.CLAWBENCH_JUDGE_API_TYPE }}
+      # ClawBench's judge is part of the benchmark definition, so it is fixed here.
+      CLAWBENCH_JUDGE_BASE_URL: https://openrouter.ai/api/v1
+      CLAWBENCH_JUDGE_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      CLAWBENCH_JUDGE_MODEL: deepseek/deepseek-v4-pro
+      CLAWBENCH_JUDGE_API_TYPE: openai-completions
       BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
       BRAINTRUST_PROJECT: ${{ vars.BRAINTRUST_PROJECT }}
     steps:
