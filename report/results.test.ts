@@ -869,3 +869,45 @@ describe("Braintrust redaction", () => {
     }
   });
 });
+
+describe("redaction false positives", () => {
+  test("keeps labels, method calls, and quoted labels with values safe", () => {
+    const label = String.raw`- text: \"Email address:\"\n  - textbox`;
+    const call = "const cookie=page.getByRole('button',{name:'Accept'});";
+    for (const source of [
+      label,
+      '- text: "Email address:"\n  - textbox',
+      call,
+    ]) {
+      expect(redactString(source)).toBe(source);
+      expect(collectSensitiveValues(source)).toEqual([]);
+      expect(() => assertSafeToPublish(source)).not.toThrow();
+    }
+
+    const quoted = "{name:'Account password':'Hunter2Pass'}";
+    const redacted = redactString(quoted);
+    expect(redacted).not.toContain("Hunter2Pass");
+    expect(() => assertSafeToPublish(redacted)).not.toThrow();
+    expect(() => assertSafeToPublish(quoted)).toThrow("sensitive field value");
+  });
+
+  test("withholds unsafe values instead of failing the experiment", () => {
+    const root = fixture();
+    const trajectoryPath = join(
+      root,
+      "task-one__abc",
+      "steps/run/agent/trajectory.json",
+    );
+    const trajectory = JSON.parse(readFileSync(trajectoryPath, "utf8"));
+    trajectory.steps[0].message = 'password: [REDACTED]"StillVisible"';
+    writeFileSync(trajectoryPath, JSON.stringify(trajectory));
+
+    const events = buildExperimentEvents(
+      [readBenchmarkArm({ name: "candidate", path: root })],
+      "test-experiment",
+    );
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain("StillVisible");
+    expect(serialized).toContain("[WITHHELD]");
+  });
+});
