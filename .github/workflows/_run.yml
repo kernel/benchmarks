@@ -69,8 +69,10 @@ jobs:
           uv sync --frozen
           bun install --cwd report --frozen-lockfile
 
+      # Leave time for the report when a run hits GitHub's six-hour job limit.
       - name: Run arms
         id: run
+        timeout-minutes: 330
         env:
           ARMS: ${{ inputs.arms }}
           TASKS: ${{ inputs.tasks }}
@@ -94,10 +96,11 @@ jobs:
         run: |
           [[ -f "$RUN_FILE" ]] || { echo "No arm ran" >&2; exit 1; }
           arms=() statuses=()
+          # An arm without a status was still running when the step timed out.
           while IFS=$'\t' read -r name status job_dir; do
             statuses+=(--status "$name=$status")
             [[ -f "$job_dir/result.json" ]] && arms+=(--arm "$name=$job_dir")
-          done < <(jq -r 'to_entries[] | [.key, .value.status, .value.job_dir] | @tsv' "$RUN_FILE")
+          done < <(jq -r 'to_entries[] | [.key, (.value.status // 124), .value.job_dir] | @tsv' "$RUN_FILE")
           ((${#arms[@]} > 0)) || { echo "No Harbor job completed" >&2; exit 1; }
 
           publication=()
@@ -110,7 +113,7 @@ jobs:
             fi
           fi
 
-          bun report/report.ts --title "$BENCHMARK_NAME" \
+          bun report/report.ts \
             --json "$RUNNER_TEMP/summary.json" --markdown "$RUNNER_TEMP/summary.md" \
             "${publication[@]}" "${statuses[@]}" "${arms[@]}"
           cat "$RUNNER_TEMP/summary.md" >>"$GITHUB_STEP_SUMMARY"

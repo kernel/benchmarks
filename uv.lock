@@ -466,7 +466,7 @@ wheels = [
 [[package]]
 name = "clawbench-eval"
 version = "0.10.0"
-source = { git = "https://github.com/kernel/ClawBench?rev=187cd252bc60af8ac3a2c98a87c9316e49a5ac75#187cd252bc60af8ac3a2c98a87c9316e49a5ac75" }
+source = { git = "https://github.com/TIGER-AI-Lab/ClawBench?rev=187cd252bc60af8ac3a2c98a87c9316e49a5ac75#187cd252bc60af8ac3a2c98a87c9316e49a5ac75" }
 dependencies = [
     { name = "fpdf2" },
     { name = "huggingface-hub" },
@@ -1207,7 +1207,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "clawbench-eval", git = "https://github.com/kernel/ClawBench?rev=187cd252bc60af8ac3a2c98a87c9316e49a5ac75" },
+    { name = "clawbench-eval", git = "https://github.com/TIGER-AI-Lab/ClawBench?rev=187cd252bc60af8ac3a2c98a87c9316e49a5ac75" },
     { name = "harbor", extras = ["kernel"], git = "https://github.com/kernel/harbor?rev=5e85bc1ab69b54d11eabcb3fc9677a8023e61570" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "kernel", specifier = ">=0.123.0" },

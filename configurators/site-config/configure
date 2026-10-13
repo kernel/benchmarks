@@ -7,7 +7,7 @@
    browser and proxy recipe, plus guidance for navigating the site.
 3. An LLM translates the proxy recipe into a Kernel proxy, which is created
    once per distinct recipe and then reused by name.
-4. The guidance becomes steering for the agent when `steering` is enabled.
+4. The guidance becomes steering for the agent when `steering` is true.
 
 stdin:  {"task": {"config": str, "instruction": str}, "args": {"model": str, "steering": bool}}
 stdout: {"browser": {...}, "steering": str | null, "provenance": {...}}
@@ -19,6 +19,7 @@ import hashlib
 import json
 import re
 import sys
+from collections.abc import Callable
 from typing import Any
 
 import litellm
@@ -58,23 +59,45 @@ hostnames), and optional "protocol" ("http" or "https"). Do not include "name".
 """
 
 
-def ask(model: str, prompt: str) -> dict[str, Any]:
-    response = litellm.completion(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        num_retries=3,
-    )
-    text = response.choices[0].message.content or ""
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError(f"model did not return JSON: {text[:200]}")
-    return json.loads(match.group(0))
+def ask[T](model: str, prompt: str, parse: Callable[[dict[str, Any]], T]) -> T:
+    """Ask the model for JSON, retrying when the answer can't be used."""
+    text = ""
+    for _ in range(3):
+        response = litellm.completion(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            num_retries=3,
+        )
+        text = response.choices[0].message.content or ""
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        try:
+            return parse(json.loads(match.group(0) if match else text))
+        except (ValueError, KeyError, TypeError):
+            continue
+    raise SystemExit(f"{model} gave no usable answer; last reply: {text[:500]}")
+
+
+def parse_site(answer: dict[str, Any]) -> str | None:
+    url = answer["url"]
+    if url is not None and not (isinstance(url, str) and url.startswith(("http://", "https://"))):
+        raise ValueError(url)
+    return url
+
+
+def parse_proxy(answer: dict[str, Any]) -> dict[str, Any]:
+    if "create" in answer:
+        if answer["create"]["type"] not in {"isp", "residential", "mobile"}:
+            raise ValueError(answer)
+        return answer
+    if answer["mode"] not in {"direct", "default"}:
+        raise ValueError(answer)
+    return {"mode": answer["mode"]}
 
 
 def proxy_settings(client: Kernel, model: str, recipe: dict[str, Any]) -> dict[str, Any]:
-    proxy = ask(model, PROXY_PROMPT.format(recipe=json.dumps(recipe, indent=2)))
+    proxy = ask(model, PROXY_PROMPT.format(recipe=json.dumps(recipe, indent=2)), parse_proxy)
     if "create" not in proxy:
-        return {"mode": proxy["mode"]}
+        return proxy
     body = proxy["create"]
     digest = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
     name = f"site-config-{body['type']}-{digest}"
@@ -96,7 +119,7 @@ def main() -> int:
     args = request.get("args") or {}
     model = args.get("model", DEFAULT_MODEL)
 
-    site = ask(model, SITE_PROMPT.format(**task)).get("url")
+    site = ask(model, SITE_PROMPT.format(**task), parse_site)
     output: dict[str, Any] = {"browser": {}, "steering": None, "provenance": {"url": site}}
     if not site:
         json.dump(output, sys.stdout)
@@ -116,7 +139,7 @@ def main() -> int:
     if recommendation.get("type") == "recommendation":
         output["browser"] = dict(recommendation["browser"])
         output["browser"]["proxy"] = proxy_settings(client, model, recommendation["proxy"])
-    if args.get("steering", True):
+    if args.get("steering", False):
         output["steering"] = lookup.get("guidance")
     json.dump(output, sys.stdout)
     return 0

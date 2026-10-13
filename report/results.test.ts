@@ -465,24 +465,9 @@ describe("Harbor result ingestion", () => {
     expect(
       renderMarkdown("test", [summary], undefined, { candidate: 124 }),
     ).toContain("Incomplete benchmark: candidate exited 124");
-    expect(
-      renderMarkdown("test", [
-        { ...summary, arm: "candidate", lenient: 0.3 },
-        { ...summary, arm: "baseline", lenient: 0.2 },
-      ]),
-    ).toContain("+0.1 lenient");
     const ungraded = renderMarkdown("test", [
       {
         ...summary,
-        arm: "candidate",
-        scored: 0,
-        ungraded: summary.trials,
-        complete: false,
-        incompleteReasons: ["had 2 ungraded trials"],
-      },
-      {
-        ...summary,
-        arm: "baseline",
         scored: 0,
         ungraded: summary.trials,
         complete: false,
@@ -490,20 +475,16 @@ describe("Harbor result ingestion", () => {
       },
     ]);
     expect(ungraded).toContain("candidate had 2 ungraded trials");
-    expect(ungraded).not.toContain("Candidate minus baseline");
 
     const infra = renderMarkdown("test", [
       {
         ...summary,
-        arm: "candidate",
         infraErrors: 1,
         complete: false,
         incompleteReasons: ["had 1 infrastructure failure"],
       },
-      { ...summary, arm: "baseline" },
     ]);
     expect(infra).toContain("candidate had 1 infrastructure failure");
-    expect(infra).not.toContain("Candidate minus baseline");
   });
 
   test("keeps full errors until redaction and clamps derived scores", () => {

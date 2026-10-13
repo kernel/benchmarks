@@ -19,9 +19,9 @@ on:
         default: "10"
         type: string
       kernel_mcp_server_ref:
-        description: kernel/kernel-mcp-server git ref to build
+        description: kernel/kernel-mcp-server git ref to build (empty builds main)
         required: false
-        default: main
+        default: ""
         type: string
 
 permissions:

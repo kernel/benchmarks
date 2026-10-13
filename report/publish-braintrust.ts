@@ -500,7 +500,6 @@ export function buildExperimentEvents(
 
 function experimentMetadata(arms: BenchmarkArm[]): Record<string, unknown> {
   return {
-    execution_mode: "harbor",
     benchmark: process.env.BENCHMARK_NAME,
     environment: process.env.GITHUB_ACTIONS ? "ci" : "local",
     gitSha: process.env.GITHUB_SHA,

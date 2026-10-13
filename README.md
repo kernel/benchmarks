@@ -10,7 +10,16 @@ Booking a table, applying for a job, or finding a store's hours sounds easy unti
 
 This repo measures those choices side by side. Each benchmark runs a set of real-website tasks under several configurations, called **arms**, in the same time window. You can then see what changed the outcome: the agent, its tools, or its browser.
 
-Trials run on [Harbor](https://github.com/harbor-framework/harbor), an open framework for agent evaluations. Every trial gets its own [Kernel](https://www.kernel.sh) cloud browser, created fresh and deleted afterwards.
+Each attempt at one task under one arm is a **trial**. Trials run on [Harbor](https://github.com/harbor-framework/harbor), an open framework for agent evaluations. Every trial gets its own [Kernel](https://www.kernel.sh) cloud browser, created fresh and deleted afterwards.
+
+### What you need
+
+Running trials uses paid services:
+- a Kernel account,
+- an OpenAI or Anthropic key for the agent,
+- for ClawBench, a [PurelyMail](https://purelymail.com) account with a mail domain you control and an LLM judge endpoint.
+
+A full ClawBench run is 129 trials per arm. [Preparing tasks](#quick-start) for the static arms is free and needs no credentials, so you can inspect exactly what would run before spending anything.
 
 ## How a benchmark is put together
 
@@ -20,7 +29,7 @@ Trials run on [Harbor](https://github.com/harbor-framework/harbor), an open fram
 | **Toolset** | What the agent uses to drive the browser. | `kernel-mcp-local`: the [Kernel MCP server](https://github.com/kernel/kernel-mcp-server), built from source |
 | **Agent** | A Harbor agent, model, and version. | Codex with `gpt-5.6-luna` |
 | **Arm** | One agent + toolset + browser configuration. The thing being compared. | `codex-kernel-mcp-site-config` |
-| **Configurator** | Optional. Picks browser settings per task, and can add advice for the agent. | `site-config`: asks Kernel's config registry what works on the task's site |
+| **Configurator** | Optional. Picks browser settings per task, and can add advice for the agent. | `site-config`: asks Kernel's [config registry](https://kernel.sh/docs/config-registry) what works on the task's site |
 | **Benchmark** | A suite plus the arms to run on it. One GitHub workflow each. | `kernel-mcp-clawbench` |
 
 A run turns those into trials:
@@ -38,13 +47,13 @@ flowchart LR
 Inside a trial:
 
 1. Harbor creates a headful Kernel browser with that task's settings. The browser is a full VM.
-2. Inside the VM, Harbor builds the task's image with Docker and installs the agent in that container.
+2. Inside the VM, Harbor builds the task's image with Docker and installs the agent in that container. Toolsets built from source, like the Kernel MCP server, are built here too, which is why each trial spends a few minutes on setup.
 3. The agent completes the task by driving the VM's browser through its toolset.
 4. The suite's verifier scores the result. Harbor then deletes the browser.
 
 ## Quick start
 
-You need [uv](https://docs.astral.sh/uv/). Preparing tasks needs no credentials:
+You need [uv](https://docs.astral.sh/uv/). Preparing tasks for arms without a configurator needs no credentials:
 
 ```bash
 uv sync
@@ -65,14 +74,23 @@ Harbor writes one job directory per arm under `jobs/`, containing rewards, traje
 
 `--tasks` takes comma-separated task IDs or `all`. `--concurrency` sets concurrent trials per arm. `--toolset-ref` builds a toolset from a specific git ref, e.g. a Kernel MCP server branch.
 
+The run also writes `jobs/run-<id>.json`, which maps each arm to its job directory, exit status, and the browser settings and site guidance each task got.
+
+A run of two arms on two tasks (Red Cross and Indeed) produced this summary:
+
+| Arm | Configuration | Lenient | Strict | Intercepted | Infra | Retries | Ungraded | Kernel MCP valid | Median calls | Median duration | Cost |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| codex-kernel-mcp | codex@0.120.0 · gpt-5.6-luna · config 14a94e93 | 1/2 | 1/2 | 1/2 | 0 | 0 | 0 | 2/2 | 9 | 216s | $0.0281 |
+| codex-kernel-mcp-site-config | codex@0.120.0 · gpt-5.6-luna · config 14a94e93 | 1/2 | 1/2 | 1/2 | 0 | 0 | 0 | 2/2 | 16 | 302s | $0.0422 |
+
 ### Credentials
 
 | Variable | Used by |
 |---|---|
-| `KERNEL_API_KEY` | Browsers, the config registry, and Kernel MCP. Must be scoped to a single [Kernel project](https://www.kernel.sh/docs) dedicated to benchmarks. |
+| `KERNEL_API_KEY` | Browsers, the config registry, and Kernel MCP. Use an [API key scoped](https://kernel.sh/docs/info/api-keys) to a [project](https://kernel.sh/docs/info/projects) used only for benchmarks; the run checks this before starting. |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Codex and Claude Code arms; the `site-config` configurator's model |
-| `PURELY_MAIL_API_KEY`, `PURELY_MAIL_DOMAIN` | ClawBench, which gives each task a disposable email account |
-| `CLAWBENCH_JUDGE_BASE_URL`, `CLAWBENCH_JUDGE_API_KEY`, `CLAWBENCH_JUDGE_MODEL`, `CLAWBENCH_JUDGE_API_TYPE` | ClawBench's LLM judge |
+| `PURELY_MAIL_API_KEY`, `PURELY_MAIL_DOMAIN` | ClawBench creates a disposable [PurelyMail](https://purelymail.com) mailbox on your domain for every task, so agents can sign up and receive confirmation emails. |
+| `CLAWBENCH_JUDGE_BASE_URL`, `CLAWBENCH_JUDGE_API_KEY`, `CLAWBENCH_JUDGE_MODEL`, `CLAWBENCH_JUDGE_API_TYPE` | ClawBench's LLM judge, which checks the intercepted request against the task. Any OpenAI-compatible endpoint works with `CLAWBENCH_JUDGE_API_TYPE=openai-completions`; we use `deepseek/deepseek-v4-pro` through OpenRouter. See [ClawBench](https://github.com/TIGER-AI-Lab/ClawBench) for details. |
 | `BRAINTRUST_API_KEY`, `BRAINTRUST_PROJECT` | Optional: publishing results |
 
 ## Running in GitHub Actions
@@ -83,7 +101,15 @@ Each benchmark has a manually triggered workflow:
 gh workflow run kernel-mcp-clawbench.yml -f tasks=all -f concurrency=10
 ```
 
-Credentials come from the repository's `benchmarks` environment. The job summary shows a table per arm. When Braintrust is configured, each run is also published there as one experiment with redacted trajectories. Raw job directories are never uploaded, because they contain task credentials.
+Credentials come from the repository's `benchmarks` environment:
+- **Secrets:** `KERNEL_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PURELY_MAIL_API_KEY`, `CLAWBENCH_JUDGE_API_KEY`, `BRAINTRUST_API_KEY`.
+- **Variables:** `PURELY_MAIL_DOMAIN`, `CLAWBENCH_JUDGE_BASE_URL`, `CLAWBENCH_JUDGE_MODEL`, `CLAWBENCH_JUDGE_API_TYPE`, `BRAINTRUST_PROJECT`.
+
+Every benchmark's job sees all of them, so only add credentials you are comfortable sharing across benchmarks.
+
+The job summary shows a table per arm. When Braintrust is configured, each run is also published there as one experiment with redacted trajectories. Raw job directories are never uploaded, because they contain task credentials.
+
+GitHub stops jobs after six hours. Arms still running then are reported as incomplete. Lower the task count or raise `concurrency` for large runs.
 
 ## Current benchmarks
 
@@ -94,10 +120,10 @@ The Kernel MCP server on ClawBench.
 | Arm | Agent | Browser |
 |---|---|---|
 | `codex-kernel-mcp` | Codex, `gpt-5.6-luna` | Stealth |
-| `codex-kernel-mcp-site-config` | Codex, `gpt-5.6-luna` | From Kernel's config registry per site, plus the registry's guidance in the instruction |
+| `codex-kernel-mcp-site-config` | Codex, `gpt-5.6-luna` | From Kernel's config registry per site, plus the registry's guidance in the instruction. On Indeed, for example, it picks a US ISP proxy; the stealth-only arm was stopped by Cloudflare there. |
 | `claude-kernel-mcp` | Claude Code, `claude-sonnet-5` | Stealth |
 
-ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whether the agent used Kernel MCP with only its assigned browser, so a failed task can be told apart from a trial that never used the toolset.
+ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whether the agent called Kernel MCP's `execute_playwright_code` and used its assigned browser on every call, so a failed task can be told apart from a trial that never used the toolset.
 
 ## Extending
 
@@ -120,7 +146,7 @@ model = "anthropic/claude-haiku-5-5"
 steering = true
 ```
 
-`config` takes any [`POST /browsers`](https://www.kernel.sh/docs) parameter, such as `stealth`, `proxy`, `region`, `extensions`, or `viewport`. Browsers are always headful.
+`config` takes any [`POST /browsers`](https://kernel.sh/docs/api-reference/browsers/create-a-browser-session) parameter, such as `stealth`, `proxy`, `region`, `extensions`, or `viewport`. Browsers are always headful.
 
 ### Add a configurator
 
@@ -131,7 +157,13 @@ stdin:  {"task": {"config": "<task.toml>", "instruction": "<instruction>"}, "arg
 stdout: {"browser": {"stealth": true}, "steering": "advice for the agent" | null, "provenance": {...}}
 ```
 
-It never sees the verifier's files. `steering` is appended to the task instruction under "Site guidance". The harness saves each task's result in the arm's job directory as `browser-configurations.json`. Configurators may be nondeterministic, e.g. when they call an LLM.
+It never sees the verifier's files. `steering` is appended to the task instruction under "Site guidance". Each task's result is recorded in `jobs/run-<id>.json`. Configurators may be nondeterministic, e.g. when they call an LLM.
+
+`site-config` works like this:
+1. A model names the task's primary website.
+2. The [config registry](https://kernel.sh/docs/config-registry) looks it up. The registry is Kernel's record of which browser and proxy settings have reached a site, and what its bot protection reacted to.
+3. A model translates the recommended proxy recipe into a Kernel proxy, which is created once and reused.
+4. With `steering = true`, the registry's guidance for the site is added to the instruction.
 
 ### Add a toolset
 

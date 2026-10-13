@@ -7,7 +7,7 @@ license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "harbor[kernel] @ git+https://github.com/kernel/harbor@5e85bc1ab69b54d11eabcb3fc9677a8023e61570",
-    "clawbench-eval @ git+https://github.com/kernel/ClawBench@187cd252bc60af8ac3a2c98a87c9316e49a5ac75",
+    "clawbench-eval @ git+https://github.com/TIGER-AI-Lab/ClawBench@187cd252bc60af8ac3a2c98a87c9316e49a5ac75",
     "httpx>=0.27",
     "kernel>=0.123.0",
     "litellm>=1.92.0",

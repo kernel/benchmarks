@@ -3,6 +3,11 @@
 ClawBench's Harbor adapter generates the tasks. This module then makes them
 run on the browser Harbor's Kernel environment provides, and removes
 ClawBench's own tool wiring so a toolset can supply the agent's tools.
+
+The adapter has no mode for a browser that already exists, so this module
+replaces the generated Dockerfile and swaps ClawBench's browser lifecycle
+script for image/harbor-browser.py. Adding that mode to the adapter would
+reduce this suite to preflight, generation, and removing tool wiring.
 """
 
 from __future__ import annotations
@@ -13,8 +18,8 @@ import secrets
 import shutil
 from pathlib import Path
 
-import httpx
 from clawbench.eval.harbor_adapter import main as adapt
+from clawbench.runner.run_support.email import purelymail_request
 
 from harness.preflight import require_env
 from harness.tasks import instructions, read_config, test_scripts, write_config
@@ -23,7 +28,6 @@ IMAGE = Path(__file__).with_name("image")
 CLAWBENCH_BROWSER = "/app/src/harbor/kernel-browser.py "
 HARBOR_BROWSER = "/app/src/harbor/harbor-browser.py "
 RUNTIME_BLOCK = re.compile(r"\n---\nHarbor browser runtime:\n.*?\n---\n", re.DOTALL)
-PURELYMAIL_API = "https://purelymail.com/api/v0"
 
 
 def preflight() -> None:
@@ -33,9 +37,10 @@ def preflight() -> None:
     a bad credential from turning the whole run into setup failures.
     """
     require_env("PURELY_MAIL_API_KEY", "PURELY_MAIL_DOMAIN")
-    user = f"cbpreflight{secrets.token_hex(6)}"
+    api_key = os.environ["PURELY_MAIL_API_KEY"]
     domain = os.environ["PURELY_MAIL_DOMAIN"]
-    _purelymail(
+    user = f"cbpreflight{secrets.token_hex(6)}"
+    purelymail_request(
         "createUser",
         {
             "userName": user,
@@ -44,21 +49,9 @@ def preflight() -> None:
             "enablePasswordReset": False,
             "sendWelcomeEmail": False,
         },
+        api_key,
     )
-    _purelymail("deleteUser", {"userName": f"{user}@{domain}"})
-
-
-def _purelymail(endpoint: str, body: dict) -> None:
-    response = httpx.post(
-        f"{PURELYMAIL_API}/{endpoint}",
-        headers={"Purelymail-Api-Token": os.environ["PURELY_MAIL_API_KEY"]},
-        json=body,
-        timeout=30,
-    )
-    response.raise_for_status()
-    result = response.json()
-    if result.get("type") == "error":
-        raise SystemExit(f"PurelyMail {endpoint} failed: {result.get('code')}")
+    purelymail_request("deleteUser", {"userName": f"{user}@{domain}"}, api_key)
 
 
 def generate(task_ids: list[str] | None, out_dir: Path) -> list[Path]:

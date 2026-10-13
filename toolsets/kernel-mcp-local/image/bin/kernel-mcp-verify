@@ -2,9 +2,10 @@
 """Add `kernel_mcp_valid` to the task's rewards.
 
 The suite's verifier owns the task reward. This check records whether the
-agent actually used Kernel MCP, and only with the browser Harbor assigned to
-the trial, so a failed task can be told apart from a trial that never
-exercised the toolset.
+agent called Kernel MCP's `execute_playwright_code`, and whether every call
+used the browser Harbor assigned to the trial, so a failed task can be told
+apart from a trial that never exercised the toolset. It does not see browser
+control outside Kernel MCP, such as direct CDP connections.
 """
 
 from __future__ import annotations
@@ -34,7 +35,8 @@ def read_object(path: Path) -> dict[str, Any]:
 
 def main() -> int:
     VERIFIER.mkdir(parents=True, exist_ok=True)
-    shutil.copytree("/var/log/kernel-mcp", VERIFIER / "kernel-mcp", dirs_exist_ok=True)
+    if Path("/var/log/kernel-mcp").is_dir():
+        shutil.copytree("/var/log/kernel-mcp", VERIFIER / "kernel-mcp", dirs_exist_ok=True)
 
     trajectory = read_object(LOGS / "agent" / "trajectory.json")
     calls = [

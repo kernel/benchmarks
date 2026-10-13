@@ -4,15 +4,14 @@
 # before mcp-remote starts, because stdout carries the MCP protocol.
 set -eu
 
-KERNEL_API_KEY=${KERNEL_API_KEY:-$(cat /run/kernel-mcp/api-key)}
+# mcp-remote expands ${KERNEL_MCP_AUTHORIZATION} itself, which keeps the key
+# off its command line.
+KERNEL_MCP_AUTHORIZATION="Bearer ${KERNEL_API_KEY:-$(cat /run/kernel-mcp/api-key)}"
+export KERNEL_MCP_AUTHORIZATION
 for _ in $(seq 1 120); do
-  if curl -fsS -o /dev/null -X POST http://127.0.0.1:3002/mcp \
-    -H "Authorization: Bearer $KERNEL_API_KEY" \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/json, text/event-stream" \
-    --data '{"jsonrpc":"2.0","id":"ready","method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"kernel-mcp","version":"1.0.0"}}}' \
-    2>/dev/null; then
-    exec mcp-remote http://127.0.0.1:3002/mcp --header "Authorization: Bearer $KERNEL_API_KEY"
+  if curl -s -o /dev/null http://127.0.0.1:3002/; then
+    exec mcp-remote http://127.0.0.1:3002/mcp \
+      --header 'Authorization:${KERNEL_MCP_AUTHORIZATION}'
   fi
   sleep 1
 done

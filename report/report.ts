@@ -21,7 +21,7 @@ function parseArgs(args: string[]): Options {
   const options: Options = {
     arms: [],
     statuses: {},
-    title: "Benchmark",
+    title: process.env.BENCHMARK_NAME ?? "Benchmark",
   };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
@@ -100,7 +100,7 @@ export function renderMarkdown(
     ];
     lines.push(
       "",
-      `> [!WARNING]\n> Incomplete benchmark: ${reasons.join(", ")}. Scores below include only completed Harbor results; comparison deltas are suppressed.`,
+      `> [!WARNING]\n> Incomplete benchmark: ${reasons.join(", ")}. Scores below include only completed Harbor results.`,
     );
   }
   lines.push(
@@ -114,22 +114,6 @@ export function renderMarkdown(
     );
   }
 
-  const candidate = summaries.find((summary) => summary.arm === "candidate");
-  const baseline = summaries.find((summary) => summary.arm === "baseline");
-  if (candidate && baseline && !incomplete) {
-    const signed = (value: number) => {
-      const rounded = Number(value.toFixed(3));
-      return `${rounded >= 0 ? "+" : ""}${rounded}`;
-    };
-    const deltas = [
-      `**${signed(candidate.lenient - baseline.lenient)} lenient**`,
-      candidate.strict !== undefined && baseline.strict !== undefined
-        ? `**${signed(candidate.strict - baseline.strict)} strict**`
-        : undefined,
-      `**${signed(candidate.intercepted - baseline.intercepted)} intercepted**`,
-    ].filter(Boolean);
-    lines.push("", `Candidate minus baseline: ${deltas.join(", ")}.`);
-  }
   if (typeof publication?.url === "string") {
     lines.push("", `[Open the Braintrust experiment](${publication.url})`);
   }
