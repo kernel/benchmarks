@@ -1,0 +1,40 @@
+[project]
+name = "kernel-benchmarks"
+version = "0.1.0"
+description = "Benchmarks of everyday web tasks across agents, browser tools, and browser configurations"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "harbor[kernel] @ git+https://github.com/kernel/harbor@5e85bc1ab69b54d11eabcb3fc9677a8023e61570",
+    "clawbench-eval @ git+https://github.com/TIGER-AI-Lab/ClawBench@187cd252bc60af8ac3a2c98a87c9316e49a5ac75",
+    "httpx>=0.27",
+    "kernel>=0.123.0",
+    "litellm>=1.92.0",
+    "tomlkit>=0.13",
+]
+
+[project.scripts]
+bench = "harness.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.14"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["harness"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-include = ["configurators/*/configure", "toolsets/*/image/bin/kernel-mcp-verify"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

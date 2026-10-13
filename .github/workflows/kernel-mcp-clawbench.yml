@@ -1,0 +1,39 @@
+name: Kernel MCP on ClawBench
+
+on:
+  workflow_dispatch:
+    inputs:
+      arms:
+        description: Comma-separated arm names (empty runs every arm in benchmarks/kernel-mcp-clawbench.toml)
+        required: false
+        default: ""
+        type: string
+      tasks:
+        description: Comma-separated ClawBench task IDs, or all
+        required: false
+        default: all
+        type: string
+      concurrency:
+        description: Concurrent trials per arm
+        required: false
+        default: "10"
+        type: string
+      kernel_mcp_server_ref:
+        description: kernel/kernel-mcp-server git ref to build (empty builds main)
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    uses: ./.github/workflows/_run.yml
+    secrets: inherit
+    with:
+      benchmark: kernel-mcp-clawbench
+      arms: ${{ inputs.arms }}
+      tasks: ${{ inputs.tasks }}
+      concurrency: ${{ inputs.concurrency }}
+      toolset_ref: ${{ inputs.kernel_mcp_server_ref }}
