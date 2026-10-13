@@ -59,6 +59,7 @@ interface BraintrustEvent {
   output?: unknown;
   expected?: unknown;
   error?: string;
+  scores?: Record<string, number>;
   metadata?: Record<string, unknown>;
   metrics?: Record<string, number>;
   _is_merge: false;
@@ -161,8 +162,22 @@ function taskInstruction(trial: BenchmarkTrial): unknown {
   return redactValue(userSteps.at(-1)?.message);
 }
 
-// Score values ride in metadata rather than Braintrust's billed scores field;
-// they stay filterable and groupable there (`metadata.scores.accuracy = 1`).
+// The suite's rewards, such as ClawBench's lenient and strict judgments, are
+// Braintrust scores so the experiment summary and comparisons show them.
+// Derived rates stay in metadata, where they remain filterable.
+function trialScores(
+  trial: BenchmarkTrial,
+): Record<string, number> | undefined {
+  // Infrastructure failures are not task results; metadata counts them.
+  if (trial.errorClass === "infra") return undefined;
+  const scores = Object.fromEntries(
+    Object.entries(trial.rewards).filter(
+      ([, value]) => value >= 0 && value <= 1,
+    ),
+  );
+  return Object.keys(scores).length > 0 ? scores : undefined;
+}
+
 function trialMetadata(trial: BenchmarkTrial): Record<string, unknown> {
   return {
     trialName: trial.trialName,
@@ -486,6 +501,7 @@ export function buildExperimentEvents(
         },
         expected: { reward: 1 },
         error: trial.error ? redactString(trial.error, 400) : undefined,
+        scores: trialScores(trial),
         metadata: trialMetadata(trial),
         metrics: metricRecord(trial),
         _is_merge: false,
