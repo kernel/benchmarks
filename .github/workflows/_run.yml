@@ -44,7 +44,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       PURELY_MAIL_API_KEY: ${{ secrets.PURELY_MAIL_API_KEY }}
-      PURELY_MAIL_DOMAIN: ${{ vars.PURELY_MAIL_DOMAIN }}
+      PURELY_MAIL_DOMAIN: ${{ secrets.PURELY_MAIL_DOMAIN }}
       # ClawBench's judge is part of the benchmark definition, so it is fixed here.
       CLAWBENCH_JUDGE_BASE_URL: https://openrouter.ai/api/v1
       CLAWBENCH_JUDGE_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
