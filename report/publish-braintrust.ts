@@ -59,6 +59,7 @@ interface BraintrustEvent {
   output?: unknown;
   expected?: unknown;
   error?: string;
+  scores?: Record<string, number>;
   metadata?: Record<string, unknown>;
   metrics?: Record<string, number>;
   _is_merge: false;
@@ -161,8 +162,28 @@ function taskInstruction(trial: BenchmarkTrial): unknown {
   return redactValue(userSteps.at(-1)?.message);
 }
 
-// Score values ride in metadata rather than Braintrust's billed scores field;
-// they stay filterable and groupable there (`metadata.scores.accuracy = 1`).
+// The suite's rewards, such as ClawBench's lenient and strict judgments, are
+// Braintrust scores so the experiment summary and comparisons show them.
+// Derived rates stay in metadata, where they remain filterable.
+// Tracebacks put the cause last, so keep the end of long errors.
+function errorTail(error: string): string {
+  const redacted = redactString(error, Number.MAX_SAFE_INTEGER);
+  return redacted.length > 2000 ? `…${redacted.slice(-2000)}` : redacted;
+}
+
+function trialScores(
+  trial: BenchmarkTrial,
+): Record<string, number> | undefined {
+  // Infrastructure failures are not task results; metadata counts them.
+  if (trial.errorClass === "infra") return undefined;
+  const scores = Object.fromEntries(
+    Object.entries(trial.rewards).filter(
+      ([, value]) => value >= 0 && value <= 1,
+    ),
+  );
+  return Object.keys(scores).length > 0 ? scores : undefined;
+}
+
 function trialMetadata(trial: BenchmarkTrial): Record<string, unknown> {
   return {
     trialName: trial.trialName,
@@ -482,10 +503,11 @@ export function buildExperimentEvents(
         output: {
           reward: primaryReward?.value,
           rewardKey: primaryReward?.key,
-          error: trial.error ? redactString(trial.error, 400) : undefined,
+          error: trial.error ? errorTail(trial.error) : undefined,
         },
         expected: { reward: 1 },
-        error: trial.error ? redactString(trial.error, 400) : undefined,
+        error: trial.error ? errorTail(trial.error) : undefined,
+        scores: trialScores(trial),
         metadata: trialMetadata(trial),
         metrics: metricRecord(trial),
         _is_merge: false,
@@ -612,20 +634,6 @@ export async function publishBenchmark(
   experimentName: string,
   apiKey: string,
 ): Promise<Record<string, unknown>> {
-  const incomplete = arms
-    .map(summarizeArm)
-    .filter((summary) => !summary.complete);
-  if (incomplete.length > 0) {
-    throw new Error(
-      `Cannot publish incomplete benchmark arms: ${incomplete
-        .map(
-          (summary) =>
-            `${summary.arm} (${summary.incompleteReasons.join(", ")})`,
-        )
-        .join("; ")}`,
-    );
-  }
-
   const api = new BraintrustApi(apiKey);
   const project = await api.request<BraintrustProject>("/v1/project", "POST", {
     name: projectName,
