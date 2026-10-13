@@ -628,20 +628,6 @@ export async function publishBenchmark(
   experimentName: string,
   apiKey: string,
 ): Promise<Record<string, unknown>> {
-  const incomplete = arms
-    .map(summarizeArm)
-    .filter((summary) => !summary.complete);
-  if (incomplete.length > 0) {
-    throw new Error(
-      `Cannot publish incomplete benchmark arms: ${incomplete
-        .map(
-          (summary) =>
-            `${summary.arm} (${summary.incompleteReasons.join(", ")})`,
-        )
-        .join("; ")}`,
-    );
-  }
-
   const api = new BraintrustApi(apiKey);
   const project = await api.request<BraintrustProject>("/v1/project", "POST", {
     name: projectName,

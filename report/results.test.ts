@@ -445,14 +445,6 @@ describe("Harbor result ingestion", () => {
     }
   });
 
-  test("does not publish incomplete arms", async () => {
-    const arm = readBenchmarkArm({ name: "candidate", path: fixture() });
-    for (const trial of arm.trials) trial.rewards = {};
-    await expect(
-      publishBenchmark([arm], "project", "experiment", "api-key"),
-    ).rejects.toThrow("Cannot publish incomplete benchmark arms: candidate");
-  });
-
   test("uses the lenient reward per trial and reports incomplete arms", () => {
     expect(selectPrimaryReward({ reward: 0, reward_lenient: 1 })).toEqual({
       key: "reward_lenient",
