@@ -8,6 +8,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY bench/ /opt/bench/
-RUN chmod +x /opt/bench/*
+RUN chmod +x /opt/bench/finalize-mcp /opt/bench/open-start-url /opt/bench/score
 
 WORKDIR /app

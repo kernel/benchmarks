@@ -54,6 +54,11 @@ def test_generate_writes_the_split_as_harbor_tasks(tmp_path):
     assert "`finalize` tool exactly once" in instruction
     assert "https://www.southwest.com/" in (task_dir / "steps/run/workdir/setup.sh").read_text()
     assert (task_dir / "environment" / "bench" / "finalize-mcp").is_file()
+    assert json.loads((task_dir / "environment" / "bench" / "task.json").read_text()) == {
+        "id": "southwest-morning-nonstop-choice",
+        "site": "southwest.com",
+        "split": "test",
+    }
 
 
 def test_explicit_task_ids_ignore_the_split(tmp_path):

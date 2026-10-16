@@ -121,6 +121,9 @@ def _write(task: Task, task_dir: Path, today: date) -> Path:
         shutil.rmtree(task_dir)
     environment = task_dir / "environment"
     shutil.copytree(IMAGE, environment)
+    (environment / "bench" / "task.json").write_text(
+        json.dumps({"id": task.id, "site": task.site, "split": task.split})
+    )
     step = task_dir / "steps" / "run"
     (step / "tests").mkdir(parents=True)
     (step / "workdir").mkdir()

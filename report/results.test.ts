@@ -205,6 +205,35 @@ function selfReportedArm(name: string, agentSeconds: number[]): BenchmarkArm {
 }
 
 describe("Harbor result ingestion", () => {
+  test("reads suite task facts, the finalize outcome and xwebmcp tools", () => {
+    const root = fixture();
+    const verifier = join(root, "task-one__abc", "steps/run/verifier");
+    writeJson(join(verifier, "task.json"), {
+      site: "delta.com",
+      split: "train",
+    });
+    writeJson(join(verifier, "finalize.json"), { outcome: "website_error" });
+    writeJson(join(verifier, "xwebmcp-registration.json"), {
+      sha: "abc",
+      registered: ["search_flights"],
+    });
+    const trial = readBenchmarkArm({ name: "candidate", path: root }).trials[0];
+    expect(trial.task).toEqual({ site: "delta.com", split: "train" });
+    expect(trial.outcome).toBe("website_error");
+    expect(trial.xwebmcp).toEqual({
+      sha: "abc",
+      registered: ["search_flights"],
+    });
+    const row = buildExperimentEvents(
+      [readBenchmarkArm({ name: "candidate", path: root })],
+      "facts",
+    ).find((event) => event.span_attributes.type === "eval");
+    expect(row?.metadata).toMatchObject({
+      task: { site: "delta.com", split: "train" },
+      outcome: "website_error",
+    });
+  });
+
   test("reports self-reported success, agent time and speedup per task", () => {
     const control = selfReportedArm("control", [90, 300]);
     const treatment = selfReportedArm("treatment", [30, 120]);

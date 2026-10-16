@@ -14,6 +14,7 @@ import shutil
 from pathlib import Path
 
 REPORT = Path("/logs/agent/finalize.json")
+TASK = Path("/opt/bench/task.json")
 VERIFIER = Path("/logs/verifier")
 FAILURES = ("failed", "website_error", "kernel_error")
 
@@ -26,6 +27,9 @@ def main() -> int:
         report = None
     if report is not None:
         shutil.copy2(REPORT, VERIFIER / "finalize.json")
+    # The task's site and split, so reports can group trials by them.
+    if TASK.exists():
+        shutil.copy2(TASK, VERIFIER / "task.json")
     outcome = report.get("outcome") if report is not None else None
     rewards = {
         "reward": float(outcome == "success"),

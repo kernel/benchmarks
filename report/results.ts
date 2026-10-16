@@ -51,6 +51,11 @@ export interface BenchmarkTrial {
   };
   expectedBrowserSessionId?: string;
   kernelMcpSha?: string;
+  /** Suite task facts a suite writes to verifier/task.json, such as site and split. */
+  task?: Record<string, unknown>;
+  /** The agent's finalize outcome, when the suite has one. */
+  outcome?: string;
+  xwebmcp?: { sha?: string; registered: string[] };
   trajectoryPath?: string;
   startedAt?: string;
   finishedAt?: string;
@@ -294,8 +299,14 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
   const startedAt = string(result.started_at);
   const finishedAt = string(result.finished_at);
   const trajectoryPath = join(trialDir, "steps/run/agent/trajectory.json");
+  const verifier = join(trialDir, "steps/run/verifier");
   const kernelMcpResult = readJsonIfPresent(
-    join(trialDir, "steps/run/verifier/kernel-mcp-result.json"),
+    join(verifier, "kernel-mcp-result.json"),
+  );
+  const task = readJsonIfPresent(join(verifier, "task.json"));
+  const finalize = readJsonIfPresent(join(verifier, "finalize.json"));
+  const registration = readJsonIfPresent(
+    join(verifier, "xwebmcp-registration.json"),
   );
 
   return {
@@ -340,6 +351,17 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
     },
     expectedBrowserSessionId: string(kernelMcpResult.expected_session_id),
     kernelMcpSha: string(kernelMcpResult.kernel_mcp_server_sha),
+    task: Object.keys(task).length > 0 ? task : undefined,
+    outcome: string(finalize.outcome),
+    xwebmcp:
+      Object.keys(registration).length > 0
+        ? {
+            sha: string(registration.sha),
+            registered: array(registration.registered).filter(
+              (name): name is string => typeof name === "string",
+            ),
+          }
+        : undefined,
     trajectoryPath: existsSync(trajectoryPath) ? trajectoryPath : undefined,
     startedAt,
     finishedAt,
