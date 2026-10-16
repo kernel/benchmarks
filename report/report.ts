@@ -102,15 +102,15 @@ function renderRewardTables(
   const arms = summaries.map((summary) => summary.arm);
   lines.push(
     "",
-    `| Task | ${arms.map((arm) => `${arm} success | ${arm} median agent time`).join(" | ")} |`,
-    `|---|${arms.map(() => "---:|---:").join("|")}|`,
+    `| Task | ${arms.map((arm) => `${arm} success | ${arm} median agent time | ${arm} median calls`).join(" | ")} |`,
+    `|---|${arms.map(() => "---:|---:|---:").join("|")}|`,
   );
   for (const comparison of comparisons) {
     const cells = arms.map((arm) => {
       const result = comparison.arms[arm];
       return result
-        ? `${result.successes}/${result.trials} | ${duration(result.medianAgentMs)}`
-        : "— | —";
+        ? `${result.successes}/${result.trials} | ${duration(result.medianAgentMs)} | ${result.medianCalls ?? "—"}`
+        : "— | — | —";
     });
     lines.push(`| ${comparison.task} | ${cells.join(" | ")} |`);
   }

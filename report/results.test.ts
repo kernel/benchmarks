@@ -224,6 +224,7 @@ describe("Harbor result ingestion", () => {
     expect(comparisons[0].arms.treatment).toEqual({
       trials: 1,
       successes: 1,
+      medianCalls: 1,
       medianAgentMs: 30_000,
       medianSuccessAgentMs: 30_000,
     });
@@ -241,7 +242,7 @@ describe("Harbor result ingestion", () => {
     );
     expect(markdown).toContain("| Success | Finalized |");
     expect(markdown).not.toContain("Lenient");
-    expect(markdown).toContain("| find-fare | 1/1 | 90s | 1/1 | 30s |");
+    expect(markdown).toContain("| find-fare | 1/1 | 90s | 1 | 1/1 | 30s | 1 |");
     expect(markdown).toContain("median speedup 3.00×");
   });
 

@@ -104,6 +104,7 @@ export interface ArmSummary {
 export interface TaskArmResult {
   trials: number;
   successes: number;
+  medianCalls?: number;
   medianAgentMs?: number;
   medianSuccessAgentMs?: number;
 }
@@ -553,6 +554,13 @@ export function compareTasks(arms: BenchmarkArm[]): TaskComparison[] {
           {
             trials: trials.length,
             successes: trials.filter(succeeded).length,
+            medianCalls: median(
+              trials.flatMap((trial) =>
+                trial.metrics.toolCalls === undefined
+                  ? []
+                  : [trial.metrics.toolCalls],
+              ),
+            ),
             medianAgentMs: median(agentMs(trials)),
             medianSuccessAgentMs: median(agentMs(trials.filter(succeeded))),
           },
