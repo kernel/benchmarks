@@ -89,7 +89,7 @@ function renderRewardTables(
   comparisons: TaskComparison[],
 ): string[] {
   const lines = [
-    "| Arm | Configuration | Success | Failed | Website error | Kernel error | No report | Infra | Retries | Kernel MCP valid | WebMCP invoked | xwebmcp registered | Median agent time | Median agent time, successes | Median calls | Cost |",
+    "| Arm | Configuration | Success | Failed | Website error | Kernel error | No report | Infra | Retries | Tools valid | WebMCP invoked | xwebmcp registered | Median agent time | Median agent time, successes | Median calls | Cost |",
     "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
   ];
   for (const summary of summaries) {
@@ -193,7 +193,7 @@ export function renderMarkdown(
     "",
     clawbench
       ? "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator."
-      : "Outcomes are the agent's own report through `finalize`: failed (the agent's own failure), website error (the site errored or blocked it) or Kernel error (the browser or its tools failed). No report means it never called `finalize`, usually because it hit the time cap. Infra counts trials Harbor could not run. Agent time is the agent's execution, without environment and agent setup. Calls are the Kernel MCP browser calls the server logged.",
+      : "Outcomes are the agent's own report through `finalize`: failed (the agent's own failure), website error (the site errored or blocked it) or Kernel error (the browser or its tools failed). No report means it never called `finalize`, usually because it hit the time cap. Infra counts trials Harbor could not run. Agent time is the agent's execution, without environment and agent setup. Calls are the browser tool calls the MCP server logged (Kernel MCP or Playwright MCP). Tools valid means the agent drove its assigned browser with its arm's browser tools.",
     "",
   );
   return lines.join("\n");

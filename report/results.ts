@@ -306,6 +306,9 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
   const kernelMcpResult = readJsonIfPresent(
     join(verifier, "kernel-mcp-result.json"),
   );
+  const playwrightMcpResult = readJsonIfPresent(
+    join(verifier, "playwright-mcp-result.json"),
+  );
   const task = readJsonIfPresent(join(verifier, "task.json"));
   const finalize = readJsonIfPresent(join(verifier, "finalize.json"));
   const registration = readJsonIfPresent(
@@ -345,7 +348,9 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
       start: isoSeconds(startedAt),
       end: isoSeconds(finishedAt),
       ...trajectoryMetrics(trajectoryPath),
-      browserCalls: number(kernelMcpResult.browser_calls),
+      browserCalls:
+        number(kernelMcpResult.browser_calls) ??
+        number(playwrightMcpResult.browser_calls),
     },
     phases: {
       environmentSetup: phase(result.environment_setup),
@@ -471,7 +476,13 @@ export function summarizeArm(arm: BenchmarkArm): ArmSummary {
     return reward ? [{ trial, reward }] : [];
   });
   const strict = numeric("reward_strict");
-  const validity = numeric("kernel_mcp_valid");
+  // Each toolset's verifier reports whether the agent used its browser tools.
+  const validityKey = arm.trials.some(
+    (trial) => trial.rewards.kernel_mcp_valid !== undefined,
+  )
+    ? "kernel_mcp_valid"
+    : "playwright_mcp_valid";
+  const validity = numeric(validityKey);
   const webmcp = numeric("webmcp_invoked");
   const registered = numeric("xwebmcp_registered");
   const infraErrors = arm.trials.filter(
@@ -532,7 +543,7 @@ export function summarizeArm(arm: BenchmarkArm): ArmSummary {
       validity.length === 0
         ? undefined
         : validity.reduce(
-            (total, trial) => total + trial.rewards.kernel_mcp_valid,
+            (total, trial) => total + trial.rewards[validityKey],
             0,
           ),
     kernelMcpChecked: validity.length,

@@ -121,12 +121,13 @@ ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whet
 
 ### `xwebmcp-repl`
 
-How much a site's [xwebmcp](https://github.com/kernel/xwebmcp) tools help an agent that drives the browser through Kernel MCP's browser REPL, on the `xwebmcp-tasks` suite: everyday tasks on the sites xwebmcp has tools for, such as finding the cheapest fare on delta.com or putting a coffee in the cart on bluebottlecoffee.com.
+How much a site's [xwebmcp](https://github.com/kernel/xwebmcp) tools help an agent that drives the browser through Kernel MCP's browser REPL, and how the REPL compares with Playwright MCP, on the `xwebmcp-tasks` suite: everyday tasks on the sites xwebmcp has tools for, such as finding the cheapest fare on delta.com or putting a coffee in the cart on bluebottlecoffee.com.
 
 | Arm | Agent | Browser tools |
 |---|---|---|
 | `codex-repl` | Codex 0.163.0, `gpt-6-luna` | `browser_repl` |
 | `codex-repl-xwebmcp` | Codex 0.163.0, `gpt-6-luna` | `browser_repl`, plus the site's xwebmcp tools registered in the browser before the agent starts |
+| `codex-playwright-mcp` | Codex 0.163.0, `gpt-6-luna` | [Playwright MCP](https://github.com/microsoft/playwright-mcp) 0.0.83, connected over CDP to the same stealth Kernel browser. Compare with `codex-repl`; it cannot call WebMCP tools, so it has no xwebmcp counterpart. |
 | `claude-haiku-repl` | Claude Code 2.1.301, `claude-haiku-5-5` | `browser_repl` |
 | `claude-haiku-repl-xwebmcp` | Claude Code 2.1.301, `claude-haiku-5-5` | `browser_repl`, plus the site's xwebmcp tools |
 
