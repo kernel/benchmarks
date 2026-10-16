@@ -8,6 +8,9 @@ set -eu
 state=/run/kernel-mcp
 logs=/var/log/kernel-mcp
 mkdir -p "$state" "$logs"
+# The agent may run as another user; its MCP servers log calls here.
+touch "$logs/calls.jsonl"
+chmod 0666 "$logs/calls.jsonl"
 printf '%s' "${KERNEL_API_KEY:-}" >"$state/api-key"
 chmod 0600 "$state/api-key"
 printf '%s\n' "${KERNEL_SESSION_ID:-}" >"$state/session-id"

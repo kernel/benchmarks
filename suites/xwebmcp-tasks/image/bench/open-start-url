@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Open the task's start URL in the trial's browser before the agent starts.
+
+Both arms start on the same loaded page, so neither spends its own time on
+the first navigation.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+CODE = """
+await page.goto(%s, { waitUntil: "domcontentloaded", timeout: 45000 });
+await page.waitForLoadState("load", { timeout: 15000 }).catch(() => {});
+return page.url();
+"""
+
+
+def main(url: str) -> int:
+    base = (os.environ.get("KERNEL_BASE_URL") or "https://api.onkernel.com").rstrip("/")
+    request = urllib.request.Request(
+        f"{base}/browsers/{os.environ['KERNEL_SESSION_ID']}/playwright/execute",
+        data=json.dumps({"code": CODE % json.dumps(url), "timeout_sec": 90}).encode(),
+        headers={
+            "Authorization": f"Bearer {os.environ['KERNEL_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    # The container's DNS can lag its start; retry until the API is reachable.
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                result = json.load(response)
+            break
+        except urllib.error.HTTPError:
+            raise
+        except urllib.error.URLError:
+            if attempt == 4:
+                raise
+            time.sleep(2 * (attempt + 1))
+    if not result.get("success"):
+        print(f"Could not open {url}: {result.get('error')}", file=sys.stderr)
+        return 1
+    print(f"Opened {result.get('result')}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1]))

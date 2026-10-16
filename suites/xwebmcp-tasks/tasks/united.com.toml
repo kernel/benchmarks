@@ -1,0 +1,31 @@
+site = "united.com"
+start_url = "https://www.united.com/en/us"
+
+# More constraints: nonstop, not Basic, arrival time.
+[[tasks]]
+id = "united-arrive-by"
+split = "train"
+instruction = "I need to be in Denver by 1:00 PM on {{date}}. Find the cheapest nonstop United flight from Chicago O'Hare (ORD) to Denver (DEN) that day arriving by 1:00 PM, in standard Economy (not Basic Economy). Report its flight number, departure and arrival times and price for 1 adult."
+fixture = { date = { days_from_start = 21 } }
+
+# More results: every nonstop of the day.
+[[tasks]]
+id = "united-sfo-ewr-nonstops"
+split = "train"
+instruction = "List every nonstop United flight from San Francisco (SFO) to Newark (EWR) on {{date}}, with each one's flight number, departure time and lowest economy price for 1 adult, and say which departure is cheapest."
+fixture = { date = { days_from_start = 26 } }
+
+# More constraints: two dates compared.
+[[tasks]]
+id = "united-cheaper-of-two-days"
+split = "validation"
+instruction = "I can fly United from Houston (IAH) to Los Angeles (LAX) on either {{day1}} or {{day2}}. Which day has the cheaper standard Economy (not Basic Economy) fare for 1 adult? Report the cheapest such flight on each day (flight number, departure time, price) and which day is cheaper."
+fixture = { day1 = { days_from_start = 22 }, day2 = { days_from_start = 24 } }
+
+# Deeper flow: fare chosen, through to the total due.
+[[tasks]]
+id = "united-economy-to-checkout"
+split = "test"
+instruction = "Choose the cheapest standard Economy fare (not Basic Economy) for 1 adult on a one-way United flight from Denver (DEN) to Chicago O'Hare (ORD) on {{date}}, and continue until United shows the trip's total due in checkout. Report the flight number(s), departure time, the fare and the total due."
+fixture = { date = { days_from_start = 20 } }
+actions = ["select_fare", "select_fare_option"]

@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Add `playwright_mcp_valid` to the task's rewards.
+
+The suite's verifier owns the task reward. This check records whether the
+agent called Playwright MCP's browser tools, read from the calls mcp-call-log
+recorded at the server. The server only connects to the trial's browser over
+CDP, so every call it logs went to that browser.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+from typing import Any
+
+LOGS = Path("/var/log/playwright-mcp")
+VERIFIER = Path("/logs/verifier")
+
+
+def read_calls(path: Path) -> list[dict[str, Any]]:
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return []
+    calls = []
+    for line in lines:
+        try:
+            calls.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return calls
+
+
+def main() -> int:
+    VERIFIER.mkdir(parents=True, exist_ok=True)
+    if LOGS.is_dir():
+        shutil.copytree(LOGS, VERIFIER / "playwright-mcp", dirs_exist_ok=True)
+
+    calls = [
+        call
+        for call in read_calls(LOGS / "calls.jsonl")
+        if str(call.get("tool") or "").startswith("browser_")
+    ]
+    result = {
+        "valid": bool(calls),
+        "browser_calls": len(calls),
+        "browser_call_ms": sum(call.get("duration_ms") or 0 for call in calls),
+        "browser_call_errors": sum(1 for call in calls if call.get("is_error")),
+        "tools": sorted({str(call.get("tool")) for call in calls}),
+    }
+    (VERIFIER / "playwright-mcp-result.json").write_text(json.dumps(result, indent=2))
+
+    reward_path = VERIFIER / "reward.json"
+    if reward_path.exists():
+        rewards = json.loads(reward_path.read_text())
+        rewards["playwright_mcp_valid"] = float(bool(calls))
+        reward_path.write_text(json.dumps(rewards, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

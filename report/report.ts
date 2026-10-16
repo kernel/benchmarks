@@ -3,9 +3,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   type ArmSummary,
+  compareTasks,
+  medianSpeedup,
   parseArmSpec,
   readBenchmarkArm,
   summarizeArm,
+  type TaskComparison,
 } from "./results";
 
 interface Options {
@@ -81,11 +84,63 @@ function cost(value: number | undefined): string {
   return value === undefined ? "—" : `$${value.toFixed(4)}`;
 }
 
+function renderRewardTables(
+  summaries: ArmSummary[],
+  comparisons: TaskComparison[],
+): string[] {
+  const lines = [
+    "| Arm | Configuration | Success | Failed | Website error | Kernel error | No report | Infra | Retries | Tools valid | WebMCP invoked | xwebmcp registered | Median agent time | Median agent time, successes | Median calls | Cost |",
+    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  ];
+  for (const summary of summaries) {
+    lines.push(
+      `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${summary.failed ?? "—"} | ${summary.websiteErrors ?? "—"} | ${summary.kernelErrors ?? "—"} | ${summary.finalized === undefined ? "—" : summary.scored - summary.finalized} | ${summary.infraErrors} | ${summary.retries} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${ratio(summary.webmcpInvoked, summary.webmcpChecked)} | ${ratio(summary.xwebmcpRegistered, summary.xwebmcpChecked)} | ${duration(summary.medianAgentMs)} | ${duration(summary.medianSuccessAgentMs)} | ${summary.medianBrowserCalls ?? summary.medianCalls ?? "—"} | ${cost(summary.totalCostUsd)} |`,
+    );
+  }
+  if (summaries.length < 2 || comparisons.length === 0) return lines;
+
+  const arms = summaries.map((summary) => summary.arm);
+  lines.push(
+    "",
+    `| Task | ${arms.map((arm) => `${arm} success | ${arm} median agent time | ${arm} median calls`).join(" | ")} |`,
+    `|---|${arms.map(() => "---:|---:|---:").join("|")}|`,
+  );
+  for (const comparison of comparisons) {
+    const cells = arms.map((arm) => {
+      const result = comparison.arms[arm];
+      return result
+        ? `${result.successes}/${result.trials} | ${duration(result.medianAgentMs)} | ${result.medianCalls ?? "—"}`
+        : "— | — | —";
+    });
+    lines.push(`| ${comparison.task} | ${cells.join(" | ")} |`);
+  }
+  // Each `<arm>-xwebmcp` is compared with `<arm>`; without such pairs, every
+  // arm is compared with the first.
+  const pairs = arms.flatMap((arm) =>
+    arm.endsWith("-xwebmcp") && arms.includes(arm.slice(0, -"-xwebmcp".length))
+      ? [[arm.slice(0, -"-xwebmcp".length), arm]]
+      : [],
+  );
+  const comparedPairs =
+    pairs.length > 0 ? pairs : arms.slice(1).map((arm) => [arms[0], arm]);
+  for (const [baseline, candidate] of comparedPairs) {
+    const { speedup, tasks } = medianSpeedup(comparisons, baseline, candidate);
+    if (speedup !== undefined) {
+      lines.push(
+        "",
+        `${candidate} vs ${baseline}: median speedup ${speedup.toFixed(2)}× in agent time, over the ${tasks} ${tasks === 1 ? "task" : "tasks"} both arms succeeded on.`,
+      );
+    }
+  }
+  return lines;
+}
+
 export function renderMarkdown(
   title: string,
   summaries: ArmSummary[],
   publication?: Record<string, unknown>,
   statuses: Record<string, number> = {},
+  comparisons: TaskComparison[] = [],
 ): string {
   const lines = [`## ${title}`];
   const failed = Object.entries(statuses).filter(([, status]) => status !== 0);
@@ -103,15 +158,22 @@ export function renderMarkdown(
       `> [!WARNING]\n> Incomplete benchmark: ${reasons.join(", ")}. Scores below include only completed Harbor results.`,
     );
   }
-  lines.push(
-    "",
-    "| Arm | Configuration | Lenient | Strict | Intercepted | Infra | Retries | Ungraded | Kernel MCP valid | Median calls | Median duration | Cost |",
-    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  const clawbench = summaries.some(
+    (summary) => summary.scoring === "clawbench",
   );
-  for (const summary of summaries) {
+  lines.push("");
+  if (clawbench) {
     lines.push(
-      `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${ratio(summary.strict, summary.trials)} | ${ratio(summary.intercepted, summary.trials)} | ${summary.infraErrors} | ${summary.retries} | ${summary.ungraded} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${summary.medianCalls ?? "—"} | ${duration(summary.medianDurationMs)} | ${cost(summary.totalCostUsd)} |`,
+      "| Arm | Configuration | Lenient | Strict | Intercepted | Infra | Retries | Ungraded | Kernel MCP valid | Median calls | Median duration | Cost |",
+      "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     );
+    for (const summary of summaries) {
+      lines.push(
+        `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${ratio(summary.strict, summary.trials)} | ${ratio(summary.intercepted, summary.trials)} | ${summary.infraErrors} | ${summary.retries} | ${summary.ungraded} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${summary.medianCalls ?? "—"} | ${duration(summary.medianDurationMs)} | ${cost(summary.totalCostUsd)} |`,
+      );
+    }
+  } else {
+    lines.push(...renderRewardTables(summaries, comparisons));
   }
 
   if (typeof publication?.url === "string") {
@@ -129,7 +191,9 @@ export function renderMarkdown(
   }
   lines.push(
     "",
-    "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator.",
+    clawbench
+      ? "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator."
+      : "Outcomes are the agent's own report through `finalize`: failed (the agent's own failure), website error (the site errored or blocked it) or Kernel error (the browser or its tools failed). No report means it never called `finalize`, usually because it hit the time cap. Infra counts trials Harbor could not run. Agent time is the agent's execution, without environment and agent setup. Calls are the browser tool calls the MCP server logged (Kernel MCP or Playwright MCP). Tools valid means the agent drove its assigned browser with its arm's browser tools.",
     "",
   );
   return lines.join("\n");
@@ -145,6 +209,7 @@ function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const arms = options.arms.map(parseArmSpec).map(readBenchmarkArm);
   const summaries = arms.map(summarizeArm);
+  const comparisons = compareTasks(arms);
   const publication = options.publication
     ? (JSON.parse(readFileSync(options.publication, "utf8")) as Record<
         string,
@@ -155,6 +220,7 @@ function main(): void {
     benchmark: process.env.BENCHMARK_NAME,
     generatedAt: new Date().toISOString(),
     arms: summaries,
+    tasks: comparisons,
     statuses: options.statuses,
     publication,
   };
@@ -163,6 +229,7 @@ function main(): void {
     summaries,
     publication,
     options.statuses,
+    comparisons,
   );
   write(options.json, `${JSON.stringify(result, undefined, 2)}\n`);
   write(options.markdown, rendered);

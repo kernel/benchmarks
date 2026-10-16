@@ -1,0 +1,32 @@
+site = "delta.com"
+start_url = "https://www.delta.com/"
+
+# More constraints: two dates compared.
+[[tasks]]
+id = "delta-cheaper-of-two-days"
+split = "train"
+instruction = "I can fly Delta from Atlanta (ATL) to Boston (BOS) on either {{day1}} or {{day2}}. Which day has the cheaper nonstop Main Cabin (not Basic) fare for 1 adult? Report the cheapest such flight on each day (flight number, departure time, price) and which day is cheaper."
+fixture = { day1 = { days_from_start = 21 }, day2 = { days_from_start = 23 } }
+
+# More results: every nonstop, two cabins.
+[[tasks]]
+id = "delta-nonstops-main-and-first"
+split = "train"
+instruction = "List every nonstop Delta flight from New York (JFK) to Los Angeles (LAX) on {{date}} that departs before noon, with each one's departure time, Main Cabin price and First Class price for 1 adult."
+fixture = { date = { days_from_start = 25 } }
+
+# Deeper flow: fare in the cart, then the seat map.
+[[tasks]]
+id = "delta-trip-summary-seats"
+split = "validation"
+instruction = "Put the cheapest Delta Main Cabin (not Basic) one-way fare for 1 adult from Atlanta (ATL) to Orlando (MCO) on {{date}} in the cart. On Trip Summary, report the amount due, then open the seat map and report how many standard Main Cabin seats are available without an extra charge. Do not choose a seat."
+fixture = { date = { days_from_start = 23 } }
+actions = ["select_fare", "select_fare_experience", "open_seat_map", "skip_seat_selection"]
+
+# Deeper flow: fare in the cart, read the price breakdown.
+[[tasks]]
+id = "delta-evening-trip-summary"
+split = "test"
+instruction = "Put the cheapest nonstop Delta Main Cabin (not Basic) one-way fare for 1 adult from Detroit (DTW) to Minneapolis (MSP) on {{date}} that departs after 5:00 PM in the cart, and stop on Trip Summary. Report the flight number, departure time, the base fare, the taxes and fees, and the amount due."
+fixture = { date = { days_from_start = 19 } }
+actions = ["select_fare", "select_fare_experience"]

@@ -1,0 +1,58 @@
+name: xwebmcp tools with the browser REPL
+
+on:
+  workflow_dispatch:
+    inputs:
+      arms:
+        description: Comma-separated arm names (empty runs every arm in benchmarks/xwebmcp-repl.toml)
+        required: false
+        default: ""
+        type: string
+      split:
+        description: Task split to run. Compare arms on test; improve tools on train and validation.
+        required: false
+        default: test
+        type: choice
+        options: [test, validation, train, all]
+      tasks:
+        description: Comma-separated task IDs, whatever their split, or all
+        required: false
+        default: all
+        type: string
+      attempts:
+        description: Trials per task and arm
+        required: false
+        default: "3"
+        type: string
+      concurrency:
+        description: Concurrent trials per arm
+        required: false
+        default: "14"
+        type: string
+      xwebmcp_ref:
+        description: kernel/xwebmcp git ref to take the tools from
+        required: false
+        default: main
+        type: string
+      kernel_mcp_server_ref:
+        description: kernel/kernel-mcp-server git ref to build (empty builds main)
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    uses: ./.github/workflows/_run.yml
+    secrets: inherit
+    with:
+      benchmark: xwebmcp-repl
+      arms: ${{ inputs.arms }}
+      tasks: ${{ inputs.tasks }}
+      attempts: ${{ inputs.attempts }}
+      concurrency: ${{ inputs.concurrency }}
+      toolset_ref: ${{ inputs.kernel_mcp_server_ref }}
+      suite_args: split=${{ inputs.split }}
+      toolset_args: xwebmcp_ref=${{ inputs.xwebmcp_ref }}

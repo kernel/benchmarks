@@ -1,0 +1,16 @@
+# Claude Code with Haiku driving the browser only through Kernel MCP's browser
+# REPL, with a fixed stealth browser. The control for claude-haiku-repl-xwebmcp.
+agent = "claude-code"
+model = "claude-haiku-5-5"
+agent_version = "2.1.301"
+toolset = "kernel-mcp-local"
+
+# WebSearch and WebFetch would let the agent answer without the browser.
+[agent_kwargs]
+disable_web_search = true
+
+[toolset_args]
+toolsets = ["repl"]
+
+[browser]
+config = { stealth = true }
