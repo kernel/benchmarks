@@ -1,27 +1,32 @@
 site = "google.com"
 start_url = "https://www.google.com/travel/flights"
 
+# More constraints: nonstop, airline excluded.
 [[tasks]]
-id = "google-flights-cheapest-one-way"
+id = "google-flights-nonstop-not-spirit"
 split = "train"
-instruction = "On Google Flights, find the cheapest one-way flight for 1 adult from New York (JFK) to Los Angeles (LAX) on {{date}}. Report the airline, flight number(s), departure time, number of stops and price."
+instruction = "On Google Flights, find the cheapest nonstop one-way flight for 1 adult from New York (JFK) to Los Angeles (LAX) on {{date}} that is not on a basic or ultra-low-cost carrier (not Spirit or Frontier). Report the airline, flight number, departure time and price."
 fixture = { date = { days_from_start = 21 } }
 
+# Deeper flow: both legs chosen, through to booking options.
 [[tasks]]
-id = "google-flights-nonstop-round-trip"
+id = "google-flights-round-trip-booking"
 split = "train"
-instruction = "On Google Flights, find the cheapest nonstop round trip for 1 adult from San Francisco (SFO) to Seattle (SEA), leaving {{depart}} and returning {{return}}. Report the airline, both flights' numbers and departure times, and the round-trip price."
+instruction = "On Google Flights, choose the cheapest nonstop round trip for 1 adult from San Francisco (SFO) to Seattle (SEA), leaving {{depart}} and returning {{return}}: pick the outbound, then the return, and open the booking options. Report both flights and each seller Google lists with its price. Do not continue to any airline or travel agency site."
 fixture = { depart = { days_from_start = 24 }, return = { days_from_start = 27 } }
+actions = ["select_flight"]
 
+# Deeper flow: one flight chosen, through to booking options.
 [[tasks]]
 id = "google-flights-booking-options"
 split = "validation"
-instruction = "On Google Flights, pick the cheapest nonstop one-way flight for 1 adult from Boston (BOS) to Chicago O'Hare (ORD) on {{date}} and open its booking options. Report the flight, and each seller Google lists with its price. Do not continue to any airline or travel agency site."
+instruction = "On Google Flights, pick the cheapest nonstop one-way flight for 1 adult from Boston (BOS) to Chicago O'Hare (ORD) on {{date}} and open its booking options. Report the flight, and each seller Google lists with its price and checked-bag allowance. Do not continue to any airline or travel agency site."
 fixture = { date = { days_from_start = 22 } }
 actions = ["select_flight"]
 
+# More results: every nonstop, grouped by airline.
 [[tasks]]
-id = "google-flights-atl-mia-nonstop"
+id = "google-flights-atl-mia-nonstops"
 split = "test"
-instruction = "On Google Flights, find the cheapest nonstop one-way flight for 1 adult from Atlanta (ATL) to Miami (MIA) on {{date}}. Report the airline, flight number, departure time and price."
+instruction = "On Google Flights, list every nonstop one-way flight for 1 adult from Atlanta (ATL) to Miami (MIA) on {{date}}, including the ones behind \"View more flights\", with each one's airline, departure time and price. Then report the cheapest nonstop for each airline."
 fixture = { date = { days_from_start = 20 } }

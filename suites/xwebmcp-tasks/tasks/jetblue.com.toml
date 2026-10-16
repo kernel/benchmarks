@@ -1,26 +1,30 @@
 site = "jetblue.com"
 start_url = "https://www.jetblue.com/"
 
+# More constraints: two dates compared.
 [[tasks]]
-id = "jetblue-cheapest-one-way"
+id = "jetblue-cheaper-of-two-days"
 split = "train"
-instruction = "Find the cheapest one-way fare on JetBlue for 1 adult from Boston (BOS) to Fort Lauderdale (FLL) on {{date}}, in any fare type. Report its flight number(s), departure time, fare type and price."
-fixture = { date = { days_from_start = 21 } }
+instruction = "I can fly JetBlue from Boston (BOS) to Fort Lauderdale (FLL) on either {{day1}} or {{day2}}. Which day has the cheaper nonstop fare for 1 adult? Report the cheapest nonstop flight on each day (flight number, departure time, fare type, price) and which day is cheaper."
+fixture = { day1 = { days_from_start = 21 }, day2 = { days_from_start = 22 } }
 
+# More constraints: nonstop, time window.
 [[tasks]]
-id = "jetblue-earliest-jfk-mco"
+id = "jetblue-midday-jfk-mco"
 split = "train"
-instruction = "What is the earliest nonstop JetBlue flight from New York (JFK) to Orlando (MCO) on {{date}}? Report its flight number, departure time and the cheapest fare on it for 1 adult."
+instruction = "Find the cheapest nonstop JetBlue flight from New York (JFK) to Orlando (MCO) on {{date}} that departs between 10:00 AM and 2:00 PM. Report its flight number, departure time, fare type and price for 1 adult."
 fixture = { date = { days_from_start = 18 } }
 
+# More results: every nonstop of the day.
 [[tasks]]
 id = "jetblue-jfk-sju-nonstops"
 split = "validation"
-instruction = "List every nonstop JetBlue flight from New York (JFK) to San Juan (SJU) on {{date}}, with each one's flight number, departure time and lowest fare for 1 adult."
+instruction = "List every nonstop JetBlue flight from New York (JFK) to San Juan (SJU) on {{date}}, with each one's flight number, departure time and lowest fare for 1 adult, and say which is cheapest."
 fixture = { date = { days_from_start = 24 } }
 
+# More results: every flight of the afternoon, nonstop or not.
 [[tasks]]
 id = "jetblue-afternoon-fll-jfk"
 split = "test"
-instruction = "Find the cheapest one-way JetBlue flight from Fort Lauderdale (FLL) to New York (JFK) on {{date}} that departs after 3:00 PM. Report its flight number(s), departure time, fare type and price for 1 adult."
+instruction = "List every JetBlue flight from Fort Lauderdale (FLL) to New York (JFK) on {{date}} that departs after 3:00 PM, with each one's flight number(s), departure time, number of stops and lowest fare for 1 adult, and say which is cheapest."
 fixture = { date = { days_from_start = 20 } }

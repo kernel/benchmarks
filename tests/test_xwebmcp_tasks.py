@@ -43,7 +43,7 @@ def test_generate_writes_the_split_as_harbor_tasks(tmp_path):
     assert {path.name for path in task_dirs} == {
         task.id for task in suite.load_tasks() if task.split == "test"
     }
-    task_dir = tmp_path / "southwest-earliest-las-phx"
+    task_dir = tmp_path / "southwest-morning-nonstop-choice"
     config = tomllib.loads((task_dir / "task.toml").read_text())
     assert config["metadata"]["site"] == "southwest.com"
     assert config["metadata"]["split"] == "test"
@@ -57,10 +57,15 @@ def test_generate_writes_the_split_as_harbor_tasks(tmp_path):
 
 
 def test_explicit_task_ids_ignore_the_split(tmp_path):
-    task_dirs = suite.generate(["delta-trip-summary"], tmp_path, split="test")
+    task_dirs = suite.generate(["delta-trip-summary-seats"], tmp_path, split="test")
     config = tomllib.loads((task_dirs[0] / "task.toml").read_text())
     assert config["metadata"]["split"] == "validation"
-    assert config["metadata"]["xwebmcp_actions"] == ["select_fare", "select_fare_experience"]
+    assert config["metadata"]["xwebmcp_actions"] == [
+        "select_fare",
+        "select_fare_experience",
+        "open_seat_map",
+        "skip_seat_selection",
+    ]
     with pytest.raises(SystemExit):
         suite.generate(["no-such-task"], tmp_path)
 

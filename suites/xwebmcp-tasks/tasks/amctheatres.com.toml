@@ -1,28 +1,33 @@
 site = "amctheatres.com"
 start_url = "https://www.amctheatres.com/"
 
+# More results: a whole market.
 [[tasks]]
-id = "amc-nearest-theatre"
+id = "amc-chicago-theatres"
 split = "train"
-instruction = "Which AMC theatre is closest to ZIP code 60611 (downtown Chicago)? Report its name, address and distance."
+instruction = "List every AMC theatre AMC lists in its Chicago market, with each one's name and city, and say which is closest to ZIP code 60611 (downtown Chicago)."
 actions = ["navigate_to_page"]
 
+# More constraints: format, time window.
 [[tasks]]
-id = "amc-now-playing"
+id = "amc-imax-evening"
 split = "train"
-instruction = "List the first 10 movies AMC shows as Now Playing, with each one's runtime and rating."
-actions = ["navigate_to_page"]
-
-[[tasks]]
-id = "amc-evening-ticket-price"
-split = "validation"
-instruction = "At AMC Empire 25 in New York on {{date}}, pick any movie with a showtime after 6:00 PM and find the price of one Adult ticket for it, including fees, without buying anything. Report the movie, the showtime and the price."
+instruction = "At AMC Lincoln Square 13 in New York on {{date}}, find every IMAX showtime that starts between 6:00 PM and 10:00 PM. Report each one's movie and start time."
 fixture = { date = { days_from_start = 3 } }
 actions = ["navigate_to_page"]
 
+# Deeper flow: seats picked and priced, without buying.
 [[tasks]]
-id = "amc-lincoln-square-showtimes"
+id = "amc-two-seats-price"
+split = "validation"
+instruction = "At AMC Empire 25 in New York on {{date}}, pick any movie with a showtime after 6:00 PM, find two open seats next to each other, and price two Adult tickets for them, without buying anything. Report the movie, the showtime, the seats, the price per ticket and the subtotal."
+fixture = { date = { days_from_start = 3 } }
+actions = ["navigate_to_page"]
+
+# More results: the day's whole schedule.
+[[tasks]]
+id = "amc-lincoln-square-schedule"
 split = "test"
-instruction = "What is playing at AMC Lincoln Square 13 in New York on {{date}}? List up to 5 movies with all of each one's showtimes that day."
+instruction = "List every movie playing at AMC Lincoln Square 13 in New York on {{date}}, with all of each one's showtimes that day, and say which movie has the most showtimes."
 fixture = { date = { days_from_start = 2 } }
 actions = ["navigate_to_page"]

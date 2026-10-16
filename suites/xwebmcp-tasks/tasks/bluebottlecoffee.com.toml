@@ -1,23 +1,27 @@
 site = "bluebottlecoffee.com"
 start_url = "https://bluebottlecoffee.com/"
 
+# More constraints: compare three products on price per ounce.
 [[tasks]]
-id = "bluebottle-hayes-valley-price"
+id = "bluebottle-price-per-ounce"
 split = "train"
-instruction = "What does one bag of Hayes Valley Espresso cost on Blue Bottle Coffee? Report the product name, the bag size and the price."
+instruction = "Compare Hayes Valley Espresso, Bella Donovan and Giant Steps on Blue Bottle Coffee: for one bag of each, report the price, the bag size and the price per ounce, and say which is cheapest per ounce."
 
+# More results: the whole single-origin range.
 [[tasks]]
 id = "bluebottle-single-origins"
 split = "train"
-instruction = "Which single-origin coffees does Blue Bottle sell right now? List up to five with each one's name, origin and price."
+instruction = "List every single-origin coffee Blue Bottle sells right now, with each one's name, origin and price for one bag, and say which is the most expensive."
 
+# Deeper flow: two products in the cart, cart read back.
 [[tasks]]
-id = "bluebottle-bella-donovan-cart"
+id = "bluebottle-two-coffees-cart"
 split = "validation"
-instruction = "Put one bag of Bella Donovan in the Blue Bottle cart as a one-time purchase, not a subscription. Report the cart line and the cart total. Do not check out."
+instruction = "Put one bag of Bella Donovan and one bag of Hayes Valley Espresso in the Blue Bottle cart, both as one-time purchases, not subscriptions. Report each cart line with its price and the cart total. Do not check out."
 actions = ["add_to_cart"]
 
+# More constraints: variant options across two products.
 [[tasks]]
-id = "bluebottle-giant-steps-options"
+id = "bluebottle-grind-options"
 split = "test"
-instruction = "Find Giant Steps on Blue Bottle Coffee. Report its price for one bag, the bag size, and the grind options it can be bought in."
+instruction = "Which of Giant Steps and Three Africas can be bought ground rather than whole bean on Blue Bottle Coffee? For each, report its price for one bag, the bag size, and every grind option it can be bought in."
