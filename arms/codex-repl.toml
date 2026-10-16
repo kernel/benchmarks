@@ -1,9 +1,13 @@
 # Codex driving the browser only through Kernel MCP's browser REPL, with a
 # fixed stealth browser. The control for codex-repl-xwebmcp.
 agent = "codex"
-model = "gpt-5.6-luna"
-agent_version = "0.120.0"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
 toolset = "kernel-mcp-local"
+
+# Codex's own web tool would let the agent answer without the browser.
+[agent_kwargs]
+disable_web_search = true
 
 [toolset_args]
 toolsets = ["repl"]

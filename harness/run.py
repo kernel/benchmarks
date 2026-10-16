@@ -150,6 +150,8 @@ def harbor_command(
     ]  # fmt: skip
     if arm.agent_version:
         command += ["--agent-kwarg", f"version={arm.agent_version}"]
+    for key, value in arm.agent_kwargs.items():
+        command += ["--agent-kwarg", f"{key}={json.dumps(value)}"]
     for exception in RETRY_EXCEPTIONS:
         command += ["--retry-include", exception]
     return command

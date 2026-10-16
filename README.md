@@ -117,7 +117,7 @@ The Kernel MCP server on ClawBench.
 | `codex-kernel-mcp-site-config` | Codex, `gpt-5.6-luna` | From Kernel's config registry per site, plus the registry's guidance in the instruction. On Indeed, for example, it picks a US ISP proxy; the stealth-only arm was stopped by Cloudflare there. |
 | `claude-kernel-mcp` | Claude Code, `claude-sonnet-5` | Stealth |
 
-ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whether the agent called Kernel MCP's `execute_playwright_code` and used its assigned browser on every call, so a failed task can be told apart from a trial that never used the toolset.
+ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whether the agent called Kernel MCP's browser tool and used its assigned browser on every call, so a failed task can be told apart from a trial that never used the toolset. It reads the calls the Kernel MCP server received, logged by a stdio wrapper, so it works the same for agents that nest MCP calls, such as Codex's code mode.
 
 ### `xwebmcp-repl`
 
@@ -125,8 +125,12 @@ How much a site's [xwebmcp](https://github.com/kernel/xwebmcp) tools help an age
 
 | Arm | Agent | Browser tools |
 |---|---|---|
-| `codex-repl` | Codex, `gpt-5.6-luna` | `browser_repl` |
-| `codex-repl-xwebmcp` | Codex, `gpt-5.6-luna` | `browser_repl`, plus the site's xwebmcp tools registered in the browser before the agent starts |
+| `codex-repl` | Codex 0.163.0, `gpt-6-luna` | `browser_repl` |
+| `codex-repl-xwebmcp` | Codex 0.163.0, `gpt-6-luna` | `browser_repl`, plus the site's xwebmcp tools registered in the browser before the agent starts |
+| `claude-haiku-repl` | Claude Code 2.1.301, `claude-haiku-5-5` | `browser_repl` |
+| `claude-haiku-repl-xwebmcp` | Claude Code 2.1.301, `claude-haiku-5-5` | `browser_repl`, plus the site's xwebmcp tools |
+
+Every arm runs with the agent's own web search and fetch tools off (`disable_web_search`), so answers come from the browser.
 
 - **Same tools and instruction in both arms.** Both arms get the same instruction: list the page's WebMCP tools with `webmcp.listTools()` in the REPL and use one when it fits. The treatment arm's page simply lists more tools. It gets the site's read-only tools, plus the tools that change site state that a task names in `actions`, such as `add_to_cart` for a cart task. Tools xwebmcp marks `broken` are left out.
 - **Same start.** Before the agent starts, setup opens the task's start URL, so neither arm spends its own time loading the site.
@@ -136,7 +140,7 @@ How much a site's [xwebmcp](https://github.com/kernel/xwebmcp) tools help an age
   - `outcome`: `success`, `failed` (its own failure, or the site doesn't offer what the task asks for), `website_error` (the site errored or blocked it: a third-party failure) or `kernel_error` (the browser, REPL or a WebMCP tool failed: a first-party failure).
 
   `reward` is 1 for `success` and 0 otherwise, including when the agent never called `finalize`; `outcome_<name>` records each other outcome. No judge checks the report. The report is kept as `verifier/finalize.json` in each trial, so an external judge can grade the same trials later.
-- **Speed.** The report compares agent time: the agent's own execution, without environment and agent setup. It shows the median per arm, a per-task table, and the treatment's median speedup over the tasks both arms completed.
+- **Speed.** The report compares agent time (the agent's own execution, without environment and agent setup) and Kernel MCP browser calls. It shows the median per arm, a per-task table, and each `-xwebmcp` arm's median speedup over its control on the tasks both completed.
 - **Other rewards.** `webmcp_invoked` records whether the agent called `webmcp.invokeTool` (both arms). `xwebmcp_registered` records whether the tools were registered (treatment). `kernel_mcp_valid` records whether the agent drove its assigned browser through `browser_repl`.
 
 #### Splits
@@ -183,7 +187,7 @@ model = "anthropic/claude-haiku-5-5"
 steering = true
 ```
 
-`[toolset_args]` passes keyword arguments to the toolset's `apply`, such as `toolsets = ["repl"]` for `kernel-mcp-local`.
+`[toolset_args]` passes keyword arguments to the toolset's `apply`, such as `toolsets = ["repl"]` for `kernel-mcp-local`. `[agent_kwargs]` passes options to the Harbor agent, such as `disable_web_search = true`.
 
 `config` takes any [`POST /browsers`](https://kernel.sh/docs/api-reference/browsers/create-a-browser-session) parameter, such as `stealth`, `proxy`, `region`, `extensions`, or `viewport`. Browsers are always headful.
 

@@ -52,3 +52,18 @@ def test_toolset_args_override_only_the_keys_an_arm_sets(tmp_path, monkeypatch):
 
     with pytest.raises(SystemExit, match="unknown_arg"):
         run.prepare("b", None, None, tmp_path / "again", None, None, {"unknown_arg": "x"})
+
+
+def test_harbor_command_passes_agent_kwargs_as_json(tmp_path):
+    arm = Arm(
+        name="a",
+        agent="codex",
+        model="gpt-6-luna",
+        toolset="t",
+        agent_version="0.163.0",
+        agent_kwargs={"disable_web_search": True},
+    )
+    command = run.harbor_command(run.PreparedArm(arm, tmp_path, {}), tmp_path, "job", 2, 3)
+    assert "version=0.163.0" in command
+    assert "disable_web_search=true" in command
+    assert command[command.index("--n-attempts") + 1] == "3"

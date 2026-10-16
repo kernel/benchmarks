@@ -27,6 +27,7 @@ class Arm:
     model: str
     toolset: str
     agent_version: str | None = None
+    agent_kwargs: dict[str, Any] = field(default_factory=dict)
     browser: Browser = field(default_factory=Browser)
     toolset_args: dict[str, Any] = field(default_factory=dict)
 

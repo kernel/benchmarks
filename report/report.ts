@@ -94,7 +94,7 @@ function renderRewardTables(
   ];
   for (const summary of summaries) {
     lines.push(
-      `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${summary.failed ?? "—"} | ${summary.websiteErrors ?? "—"} | ${summary.kernelErrors ?? "—"} | ${summary.finalized === undefined ? "—" : summary.scored - summary.finalized} | ${summary.infraErrors} | ${summary.retries} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${ratio(summary.webmcpInvoked, summary.webmcpChecked)} | ${ratio(summary.xwebmcpRegistered, summary.xwebmcpChecked)} | ${duration(summary.medianAgentMs)} | ${duration(summary.medianSuccessAgentMs)} | ${summary.medianCalls ?? "—"} | ${cost(summary.totalCostUsd)} |`,
+      `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${summary.failed ?? "—"} | ${summary.websiteErrors ?? "—"} | ${summary.kernelErrors ?? "—"} | ${summary.finalized === undefined ? "—" : summary.scored - summary.finalized} | ${summary.infraErrors} | ${summary.retries} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${ratio(summary.webmcpInvoked, summary.webmcpChecked)} | ${ratio(summary.xwebmcpRegistered, summary.xwebmcpChecked)} | ${duration(summary.medianAgentMs)} | ${duration(summary.medianSuccessAgentMs)} | ${summary.medianBrowserCalls ?? summary.medianCalls ?? "—"} | ${cost(summary.totalCostUsd)} |`,
     );
   }
   if (summaries.length < 2 || comparisons.length === 0) return lines;
@@ -114,8 +114,16 @@ function renderRewardTables(
     });
     lines.push(`| ${comparison.task} | ${cells.join(" | ")} |`);
   }
-  const [baseline, ...candidates] = arms;
-  for (const candidate of candidates) {
+  // Each `<arm>-xwebmcp` is compared with `<arm>`; without such pairs, every
+  // arm is compared with the first.
+  const pairs = arms.flatMap((arm) =>
+    arm.endsWith("-xwebmcp") && arms.includes(arm.slice(0, -"-xwebmcp".length))
+      ? [[arm.slice(0, -"-xwebmcp".length), arm]]
+      : [],
+  );
+  const comparedPairs =
+    pairs.length > 0 ? pairs : arms.slice(1).map((arm) => [arms[0], arm]);
+  for (const [baseline, candidate] of comparedPairs) {
     const { speedup, tasks } = medianSpeedup(comparisons, baseline, candidate);
     if (speedup !== undefined) {
       lines.push(
@@ -185,7 +193,7 @@ export function renderMarkdown(
     "",
     clawbench
       ? "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator."
-      : "Outcomes are the agent's own report through `finalize`: failed (the agent's own failure), website error (the site errored or blocked it) or Kernel error (the browser or its tools failed). No report means it never called `finalize`, usually because it hit the time cap. Infra counts trials Harbor could not run. Agent time is the agent's execution, without environment and agent setup.",
+      : "Outcomes are the agent's own report through `finalize`: failed (the agent's own failure), website error (the site errored or blocked it) or Kernel error (the browser or its tools failed). No report means it never called `finalize`, usually because it hit the time cap. Infra counts trials Harbor could not run. Agent time is the agent's execution, without environment and agent setup. Calls are the Kernel MCP browser calls the server logged.",
     "",
   );
   return lines.join("\n");

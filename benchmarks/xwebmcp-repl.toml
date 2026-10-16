@@ -2,7 +2,7 @@
 # everyday tasks on those sites. Runs the held-out test split; pass
 # --suite-arg split=train or split=validation when improving the tools.
 suite = "xwebmcp-tasks"
-arms = ["codex-repl", "codex-repl-xwebmcp"]
+arms = ["codex-repl", "codex-repl-xwebmcp", "claude-haiku-repl", "claude-haiku-repl-xwebmcp"]
 
 [suite_args]
 split = "test"

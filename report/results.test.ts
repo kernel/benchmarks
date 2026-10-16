@@ -284,6 +284,28 @@ describe("Harbor result ingestion", () => {
     expect(markdown).toContain("median speedup 3.00×");
   });
 
+  test("compares each -xwebmcp arm with its own control and counts browser calls", () => {
+    const arms = [
+      selfReportedArm("codex", [90, 300]),
+      selfReportedArm("codex-xwebmcp", [30, 120]),
+      selfReportedArm("haiku", [60, 300]),
+      selfReportedArm("haiku-xwebmcp", [60, 120]),
+    ];
+    arms[1].trials[0].metrics.browserCalls = 7;
+    const comparisons = compareTasks(arms);
+    expect(comparisons[0].arms["codex-xwebmcp"].medianCalls).toBe(7);
+    const markdown = renderMarkdown(
+      "test",
+      arms.map(summarizeArm),
+      undefined,
+      {},
+      comparisons,
+    );
+    expect(markdown).toContain("codex-xwebmcp vs codex: median speedup 3.00×");
+    expect(markdown).toContain("haiku-xwebmcp vs haiku: median speedup 1.00×");
+    expect(markdown).not.toContain("haiku vs codex");
+  });
+
   test("keeps infrastructure errors out of task-quality scores", () => {
     const arm = readBenchmarkArm({ name: "candidate", path: fixture() });
     expect(arm.trials).toHaveLength(2);

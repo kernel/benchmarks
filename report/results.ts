@@ -16,6 +16,8 @@ export interface BenchmarkMetrics {
   costUsd?: number;
   durationMs?: number;
   toolCalls?: number;
+  /** Kernel MCP browser calls the server logged; counted the same way for every agent harness. */
+  browserCalls?: number;
   start?: number;
   end?: number;
 }
@@ -103,6 +105,7 @@ export interface ArmSummary {
   xwebmcpRegistered?: number;
   xwebmcpChecked: number;
   medianCalls?: number;
+  medianBrowserCalls?: number;
   medianDurationMs?: number;
   medianAgentMs?: number;
   medianSuccessAgentMs?: number;
@@ -342,6 +345,7 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
       start: isoSeconds(startedAt),
       end: isoSeconds(finishedAt),
       ...trajectoryMetrics(trajectoryPath),
+      browserCalls: number(kernelMcpResult.browser_calls),
     },
     phases: {
       environmentSetup: phase(result.environment_setup),
@@ -439,6 +443,14 @@ function agentMs(trials: BenchmarkTrial[]): number[] {
   return trials.flatMap((trial) => {
     const duration = trial.phases.agentExecution?.durationMs;
     return duration === undefined ? [] : [duration];
+  });
+}
+
+/** Browser calls when the server logged them, else the agent's own tool calls. */
+function calls(trials: BenchmarkTrial[]): number[] {
+  return trials.flatMap((trial) => {
+    const count = trial.metrics.browserCalls ?? trial.metrics.toolCalls;
+    return count === undefined ? [] : [count];
   });
 }
 
@@ -540,6 +552,13 @@ export function summarizeArm(arm: BenchmarkArm): ArmSummary {
     webmcpChecked: webmcp.length,
     xwebmcpRegistered: sum(registered, "xwebmcp_registered"),
     xwebmcpChecked: registered.length,
+    medianBrowserCalls: median(
+      graded.flatMap((trial) =>
+        trial.metrics.browserCalls === undefined
+          ? []
+          : [trial.metrics.browserCalls],
+      ),
+    ),
     medianAgentMs: median(agentMs(graded)),
     medianSuccessAgentMs: median(agentMs(graded.filter(succeeded))),
     medianCalls: median(
@@ -586,13 +605,7 @@ export function compareTasks(arms: BenchmarkArm[]): TaskComparison[] {
           {
             trials: trials.length,
             successes: trials.filter(succeeded).length,
-            medianCalls: median(
-              trials.flatMap((trial) =>
-                trial.metrics.toolCalls === undefined
-                  ? []
-                  : [trial.metrics.toolCalls],
-              ),
-            ),
+            medianCalls: median(calls(trials)),
             medianAgentMs: median(agentMs(trials)),
             medianSuccessAgentMs: median(agentMs(trials.filter(succeeded))),
           },
