@@ -1,3 +1,4 @@
+import inspect
 import json
 
 from harbor.environments.kernel import KernelEnvironment
@@ -17,3 +18,8 @@ def test_task_browser_config_becomes_create_overrides(tmp_path, monkeypatch):
     KernelTaskEnvironment(environment_dir=tmp_path, session_id="s")
 
     assert captured == {"session_id": "s", "browser_create_overrides": {"stealth": False}}
+
+
+def test_harbor_kernel_environment_takes_create_overrides():
+    # Harbor upgrades must keep the parameter the subclass passes.
+    assert "browser_create_overrides" in inspect.signature(KernelEnvironment.__init__).parameters
