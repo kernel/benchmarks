@@ -1,0 +1,27 @@
+site = "alaskaair.com"
+start_url = "https://www.alaskaair.com/"
+
+[[tasks]]
+id = "alaska-cheapest-one-way"
+split = "train"
+instruction = "Find the cheapest one-way fare on Alaska Airlines for 1 adult from Seattle (SEA) to San Francisco (SFO) on {{date}}, in any cabin or fare type. Report its flight number(s), departure time, fare type and price."
+fixture = { date = { days_from_start = 21 } }
+
+[[tasks]]
+id = "alaska-main-vs-first"
+split = "train"
+instruction = "For the first nonstop Alaska flight from Seattle (SEA) to Anchorage (ANC) on {{date}}, compare the Main fare with the First Class fare for 1 adult. Report the flight number, departure time and both prices."
+fixture = { date = { days_from_start = 25 } }
+
+[[tasks]]
+id = "alaska-add-to-cart"
+split = "validation"
+instruction = "Add the cheapest Main fare (not Saver) for 1 adult on a one-way Alaska flight from Portland (PDX) to Los Angeles (LAX) on {{date}} to the cart. Report the flight number(s) and the cart total."
+fixture = { date = { days_from_start = 23 } }
+actions = ["select_fare", "respond_fare_offer", "continue_checkout"]
+
+[[tasks]]
+id = "alaska-sea-las-nonstop"
+split = "test"
+instruction = "Find the cheapest nonstop one-way Alaska Airlines flight from Seattle (SEA) to Las Vegas (LAS) on {{date}} for 1 adult. Report its flight number, departure time, fare type and price."
+fixture = { date = { days_from_start = 20 } }

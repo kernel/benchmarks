@@ -25,6 +25,10 @@ def test_scripts(task_dir: Path) -> list[Path]:
     return sorted([*task_dir.glob("tests/test.sh"), *task_dir.glob("steps/*/tests/test.sh")])
 
 
+def setup_scripts(task_dir: Path) -> list[Path]:
+    return sorted([*task_dir.glob("steps/*/workdir/setup.sh")])
+
+
 def append_instruction(task_dir: Path, text: str) -> None:
     for path in instructions(task_dir):
         path.write_text(path.read_text().rstrip() + "\n\n" + text.strip() + "\n")
@@ -32,4 +36,13 @@ def append_instruction(task_dir: Path, text: str) -> None:
 
 def append_test_command(task_dir: Path, command: str) -> None:
     for path in test_scripts(task_dir):
+        path.write_text(path.read_text().rstrip() + "\n" + command + "\n")
+
+
+def append_setup_command(task_dir: Path, command: str) -> None:
+    """Run `command` at the end of each step's setup, before the agent starts."""
+    scripts = setup_scripts(task_dir)
+    if not scripts:
+        raise SystemExit(f"{task_dir.name} has no step setup.sh to run {command!r} in")
+    for path in scripts:
         path.write_text(path.read_text().rstrip() + "\n" + command + "\n")

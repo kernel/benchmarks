@@ -1,0 +1,23 @@
+site = "bluebottlecoffee.com"
+start_url = "https://bluebottlecoffee.com/"
+
+[[tasks]]
+id = "bluebottle-hayes-valley-price"
+split = "train"
+instruction = "What does one bag of Hayes Valley Espresso cost on Blue Bottle Coffee? Report the product name, the bag size and the price."
+
+[[tasks]]
+id = "bluebottle-single-origins"
+split = "train"
+instruction = "Which single-origin coffees does Blue Bottle sell right now? List up to five with each one's name, origin and price."
+
+[[tasks]]
+id = "bluebottle-bella-donovan-cart"
+split = "validation"
+instruction = "Put one bag of Bella Donovan in the Blue Bottle cart as a one-time purchase, not a subscription. Report the cart line and the cart total. Do not check out."
+actions = ["add_to_cart"]
+
+[[tasks]]
+id = "bluebottle-giant-steps-options"
+split = "test"
+instruction = "Find Giant Steps on Blue Bottle Coffee. Report its price for one bag, the bag size, and the grind options it can be bought in."

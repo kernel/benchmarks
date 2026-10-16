@@ -1,0 +1,27 @@
+site = "aa.com"
+start_url = "https://www.aa.com/"
+
+[[tasks]]
+id = "aa-cheapest-one-way"
+split = "train"
+instruction = "Find the cheapest one-way fare on American Airlines for 1 adult from Dallas/Fort Worth (DFW) to Los Angeles (LAX) on {{date}}, in any cabin or fare type. Report its flight number(s), departure time, fare type and price."
+fixture = { date = { days_from_start = 21 } }
+
+[[tasks]]
+id = "aa-clt-lga-nonstops"
+split = "train"
+instruction = "How many nonstop American Airlines flights go from Charlotte (CLT) to New York LaGuardia (LGA) on {{date}}? List each one's flight number, departure time and lowest Main Cabin price for 1 adult."
+fixture = { date = { days_from_start = 24 } }
+
+[[tasks]]
+id = "aa-trip-summary"
+split = "validation"
+instruction = "Choose the cheapest Main Cabin fare (not Basic Economy) for 1 adult on a one-way American Airlines flight from Miami (MIA) to Chicago O'Hare (ORD) on {{date}}, and stop on American's trip summary. Report the flight number(s), the fare and the total shown there."
+fixture = { date = { days_from_start = 22 } }
+actions = ["select_fare", "select_fare_option"]
+
+[[tasks]]
+id = "aa-morning-phx-dfw"
+split = "test"
+instruction = "Find the cheapest one-way American Airlines flight from Phoenix (PHX) to Dallas/Fort Worth (DFW) on {{date}} that departs before noon. Report its flight number(s), departure time, fare type and price for 1 adult."
+fixture = { date = { days_from_start = 19 } }

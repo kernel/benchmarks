@@ -86,10 +86,31 @@ export interface ArmSummary {
   incompleteReasons: string[];
   kernelMcpValid?: number;
   kernelMcpChecked: number;
+  /** "clawbench" when trials report reward_lenient, else "reward" (one binary reward). */
+  scoring: "clawbench" | "reward";
+  finalized?: number;
+  webmcpInvoked?: number;
+  webmcpChecked: number;
+  xwebmcpRegistered?: number;
+  xwebmcpChecked: number;
   medianCalls?: number;
   medianDurationMs?: number;
+  medianAgentMs?: number;
+  medianSuccessAgentMs?: number;
   totalCostUsd?: number;
   configuration?: string;
+}
+
+export interface TaskArmResult {
+  trials: number;
+  successes: number;
+  medianAgentMs?: number;
+  medianSuccessAgentMs?: number;
+}
+
+export interface TaskComparison {
+  task: string;
+  arms: Record<string, TaskArmResult>;
 }
 
 function object(value: unknown): JsonObject {
@@ -276,7 +297,7 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
     arm,
     id: string(result.id) ?? basename(trialDir),
     taskName:
-      string(result.task_name)?.replace(/^clawbench\//, "") ??
+      string(result.task_name)?.replace(/^[^/]+\//, "") ??
       string(object(config.task).name) ??
       basename(trialDir).split("__", 1)[0],
     trialName: string(result.trial_name) ?? basename(trialDir),
@@ -381,12 +402,30 @@ function median(values: number[]): number | undefined {
     : sorted[middle];
 }
 
+function sum(trials: BenchmarkTrial[], key: string): number | undefined {
+  return trials.length === 0
+    ? undefined
+    : trials.reduce((total, trial) => total + trial.rewards[key], 0);
+}
+
+function agentMs(trials: BenchmarkTrial[]): number[] {
+  return trials.flatMap((trial) => {
+    const duration = trial.phases.agentExecution?.durationMs;
+    return duration === undefined ? [] : [duration];
+  });
+}
+
+function succeeded(trial: BenchmarkTrial): boolean {
+  return (selectPrimaryReward(trial.rewards)?.value ?? 0) >= 1;
+}
+
 export function summarizeArm(arm: BenchmarkArm): ArmSummary {
   const numeric = (key: string) =>
     arm.trials.filter(
       (trial) =>
         trial.errorClass !== "infra" && trial.rewards[key] !== undefined,
     );
+  const graded = arm.trials.filter((trial) => trial.errorClass !== "infra");
   const primary = arm.trials.flatMap((trial) => {
     if (trial.errorClass === "infra") return [];
     const reward = selectPrimaryReward(trial.rewards);
@@ -394,6 +433,8 @@ export function summarizeArm(arm: BenchmarkArm): ArmSummary {
   });
   const strict = numeric("reward_strict");
   const validity = numeric("kernel_mcp_valid");
+  const webmcp = numeric("webmcp_invoked");
+  const registered = numeric("xwebmcp_registered");
   const infraErrors = arm.trials.filter(
     (trial) => trial.errorClass === "infra",
   ).length;
@@ -456,6 +497,18 @@ export function summarizeArm(arm: BenchmarkArm): ArmSummary {
             0,
           ),
     kernelMcpChecked: validity.length,
+    scoring: arm.trials.some(
+      (trial) => trial.rewards.reward_lenient !== undefined,
+    )
+      ? "clawbench"
+      : "reward",
+    finalized: sum(numeric("finalized"), "finalized"),
+    webmcpInvoked: sum(webmcp, "webmcp_invoked"),
+    webmcpChecked: webmcp.length,
+    xwebmcpRegistered: sum(registered, "xwebmcp_registered"),
+    xwebmcpChecked: registered.length,
+    medianAgentMs: median(agentMs(graded)),
+    medianSuccessAgentMs: median(agentMs(graded.filter(succeeded))),
     medianCalls: median(
       arm.trials.flatMap((trial) =>
         trial.metrics.toolCalls === undefined ? [] : [trial.metrics.toolCalls],
@@ -479,4 +532,52 @@ export function summarizeArm(arm: BenchmarkArm): ArmSummary {
           ? configurations[0]
           : `mixed: ${configurations.join(", ")}`,
   };
+}
+
+/** Each task's successes and agent time per arm, over trials without infrastructure errors. */
+export function compareTasks(arms: BenchmarkArm[]): TaskComparison[] {
+  const tasks = [
+    ...new Set(
+      arms.flatMap((arm) => arm.trials.map((trial) => trial.taskName)),
+    ),
+  ].sort();
+  return tasks.map((task) => ({
+    task,
+    arms: Object.fromEntries(
+      arms.map((arm) => {
+        const trials = arm.trials.filter(
+          (trial) => trial.taskName === task && trial.errorClass !== "infra",
+        );
+        return [
+          arm.name,
+          {
+            trials: trials.length,
+            successes: trials.filter(succeeded).length,
+            medianAgentMs: median(agentMs(trials)),
+            medianSuccessAgentMs: median(agentMs(trials.filter(succeeded))),
+          },
+        ];
+      }),
+    ),
+  }));
+}
+
+/**
+ * The median, over tasks both arms succeeded on at least once, of the
+ * baseline's median successful agent time divided by the candidate's.
+ * Above 1 means the candidate finished faster.
+ */
+export function medianSpeedup(
+  comparisons: TaskComparison[],
+  baseline: string,
+  candidate: string,
+): { speedup?: number; tasks: number } {
+  const ratios = comparisons.flatMap((comparison) => {
+    const before = comparison.arms[baseline]?.medianSuccessAgentMs;
+    const after = comparison.arms[candidate]?.medianSuccessAgentMs;
+    return before !== undefined && after !== undefined && after > 0
+      ? [before / after]
+      : [];
+  });
+  return { speedup: median(ratios), tasks: ratios.length };
 }

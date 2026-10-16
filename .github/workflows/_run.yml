@@ -27,6 +27,21 @@ on:
         required: false
         default: ""
         type: string
+      suite_args:
+        description: Space-separated KEY=VALUE overrides of the benchmark's suite_args
+        required: false
+        default: ""
+        type: string
+      toolset_args:
+        description: Space-separated KEY=VALUE overrides of the arms' toolset_args
+        required: false
+        default: ""
+        type: string
+      attempts:
+        description: Trials per task and arm
+        required: false
+        default: "1"
+        type: string
 
 permissions:
   contents: read
@@ -79,14 +94,19 @@ jobs:
           TASKS: ${{ inputs.tasks }}
           CONCURRENCY: ${{ inputs.concurrency }}
           TOOLSET_REF: ${{ inputs.toolset_ref }}
+          SUITE_ARGS: ${{ inputs.suite_args }}
+          TOOLSET_ARGS: ${{ inputs.toolset_args }}
+          ATTEMPTS: ${{ inputs.attempts }}
         run: |
           run_id="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           jobs_dir="$RUNNER_TEMP/jobs"
           echo "run_file=$jobs_dir/run-$run_id.json" >>"$GITHUB_OUTPUT"
           echo "experiment=$BENCHMARK_NAME-$run_id" >>"$GITHUB_OUTPUT"
-          args=(--tasks "$TASKS" --concurrency "$CONCURRENCY" --jobs-dir "$jobs_dir" --run-id "$run_id")
+          args=(--tasks "$TASKS" --concurrency "$CONCURRENCY" --attempts "$ATTEMPTS" --jobs-dir "$jobs_dir" --run-id "$run_id")
           [[ -n "$ARMS" ]] && args+=(--arms "$ARMS")
           [[ -n "$TOOLSET_REF" ]] && args+=(--toolset-ref "$TOOLSET_REF")
+          for pair in $SUITE_ARGS; do args+=(--suite-arg "$pair"); done
+          for pair in $TOOLSET_ARGS; do args+=(--toolset-arg "$pair"); done
           uv run bench run "$BENCHMARK_NAME" "${args[@]}"
 
       - name: Report

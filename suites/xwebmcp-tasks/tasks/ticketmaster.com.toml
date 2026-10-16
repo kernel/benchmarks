@@ -1,0 +1,24 @@
+site = "ticketmaster.com"
+start_url = "https://www.ticketmaster.com/"
+
+[[tasks]]
+id = "ticketmaster-chicago-concerts"
+split = "train"
+instruction = "Find three concerts in Chicago, IL between {{start}} and {{end}}. Report each one's name, date and venue."
+fixture = { start = { days_from_start = 7 }, end = { days_from_start = 21 } }
+
+[[tasks]]
+id = "ticketmaster-warriors-home-game"
+split = "train"
+instruction = "Find the next Golden State Warriors home game at Chase Center listed on Ticketmaster. Report the opponent, the date and time, and the lowest All-In price per ticket for 2 tickets. Do not select or hold any tickets."
+
+[[tasks]]
+id = "ticketmaster-la-comedy"
+split = "validation"
+instruction = "Find three comedy shows in Los Angeles, CA between {{start}} and {{end}}. Report each one's name, date and venue."
+fixture = { start = { days_from_start = 3 }, end = { days_from_start = 30 } }
+
+[[tasks]]
+id = "ticketmaster-msg-cheapest"
+split = "test"
+instruction = "Find the next concert at Madison Square Garden in New York listed on Ticketmaster. Report its name, date and time, and the lowest All-In price per ticket for 2 tickets. Do not select or hold any tickets."

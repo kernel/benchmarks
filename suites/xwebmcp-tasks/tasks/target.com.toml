@@ -1,0 +1,23 @@
+site = "target.com"
+start_url = "https://www.target.com/"
+
+[[tasks]]
+id = "target-airpods-first-result"
+split = "train"
+instruction = "Search Target for \"AirPods Pro\" and report the first product in the results: its title, price and TCIN (Target's item number)."
+
+[[tasks]]
+id = "target-cheapest-paper-towels"
+split = "train"
+instruction = "Find the three cheapest paper towel products on Target. Report each one's title, price and TCIN."
+
+[[tasks]]
+id = "target-tumbler-in-cart"
+split = "validation"
+instruction = "Add one Stanley Quencher 40 oz tumbler, in any color that can be shipped, to the Target cart for shipping. Report the item's title, color, price and the cart subtotal. Do not check out."
+actions = ["add_to_cart"]
+
+[[tasks]]
+id = "target-switch-2"
+split = "test"
+instruction = "Find the Nintendo Switch 2 console on Target. Report its price, its rating and number of reviews, and whether it can be shipped."

@@ -1,0 +1,27 @@
+site = "united.com"
+start_url = "https://www.united.com/en/us"
+
+[[tasks]]
+id = "united-cheapest-one-way"
+split = "train"
+instruction = "Find the cheapest one-way fare on United for 1 adult from Chicago O'Hare (ORD) to Denver (DEN) on {{date}}, in any cabin or fare type. Report its flight number(s), departure time, fare type and price."
+fixture = { date = { days_from_start = 21 } }
+
+[[tasks]]
+id = "united-sfo-ewr-nonstops"
+split = "train"
+instruction = "List the nonstop United flights from San Francisco (SFO) to Newark (EWR) on {{date}}: for each, its flight number, departure time and lowest economy price for 1 adult."
+fixture = { date = { days_from_start = 26 } }
+
+[[tasks]]
+id = "united-economy-to-checkout"
+split = "validation"
+instruction = "Choose the cheapest standard Economy fare (not Basic Economy) for 1 adult on a one-way United flight from Houston (IAH) to Los Angeles (LAX) on {{date}}, and continue until United shows the trip's total due in checkout. Report the flight number(s), the fare and the total due."
+fixture = { date = { days_from_start = 22 } }
+actions = ["select_fare", "select_fare_option"]
+
+[[tasks]]
+id = "united-den-ord-economy"
+split = "test"
+instruction = "What is the cheapest standard Economy fare (not Basic Economy) for 1 adult on a one-way United flight from Denver (DEN) to Chicago O'Hare (ORD) on {{date}}? Report the flight number(s), departure time and price."
+fixture = { date = { days_from_start = 20 } }

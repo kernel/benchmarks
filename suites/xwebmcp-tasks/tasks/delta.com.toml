@@ -1,0 +1,27 @@
+site = "delta.com"
+start_url = "https://www.delta.com/"
+
+[[tasks]]
+id = "delta-cheapest-one-way"
+split = "train"
+instruction = "Find the cheapest one-way fare on Delta for 1 adult from Atlanta (ATL) to Boston (BOS) on {{date}}, in any cabin or fare type. Report its flight number(s), departure time, fare type and price."
+fixture = { date = { days_from_start = 21 } }
+
+[[tasks]]
+id = "delta-main-vs-first"
+split = "train"
+instruction = "For the first nonstop Delta flight from New York (JFK) to Los Angeles (LAX) on {{date}}, compare the price of Main Cabin with the price of First Class for 1 adult. Report the flight number, departure time and both prices."
+fixture = { date = { days_from_start = 25 } }
+
+[[tasks]]
+id = "delta-trip-summary"
+split = "validation"
+instruction = "Put the cheapest Delta Main Cabin (not Basic) one-way fare for 1 adult from Atlanta (ATL) to Orlando (MCO) on {{date}} in the cart, and stop on Delta's Trip Summary page. Report the flight number(s), departure time and the amount due shown on Trip Summary."
+fixture = { date = { days_from_start = 23 } }
+actions = ["select_fare", "select_fare_experience"]
+
+[[tasks]]
+id = "delta-evening-dtw-msp"
+split = "test"
+instruction = "I want to fly Delta from Detroit (DTW) to Minneapolis (MSP) on {{date}}, leaving after 5:00 PM. Find the cheapest nonstop flight that departs after 5:00 PM and report its flight number, departure time, fare type and price for 1 adult."
+fixture = { date = { days_from_start = 19 } }

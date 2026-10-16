@@ -1,0 +1,27 @@
+site = "southwest.com"
+start_url = "https://www.southwest.com/"
+
+[[tasks]]
+id = "southwest-cheapest-one-way"
+split = "train"
+instruction = "Find the cheapest one-way fare on Southwest for 1 adult from Dallas Love Field (DAL) to Houston Hobby (HOU) on {{date}}. Report its flight number(s), departure time, fare type and price."
+fixture = { date = { days_from_start = 21 } }
+
+[[tasks]]
+id = "southwest-morning-nonstops"
+split = "train"
+instruction = "I need to fly from Chicago Midway (MDW) to Denver (DEN) on {{date}} and land before lunch. List every nonstop Southwest flight that day that departs before 10:00 AM, with its departure and arrival times and the lowest fare available on it."
+fixture = { date = { days_from_start = 18 } }
+
+[[tasks]]
+id = "southwest-round-trip-total"
+split = "validation"
+instruction = "Price a Southwest round trip for 1 adult from Baltimore (BWI) to Orlando (MCO), leaving {{depart}} and returning {{return}}. Choose the cheapest fare on each leg and continue to the page where Southwest shows the trip total. Report both flights and the trip total including taxes and fees."
+fixture = { depart = { days_from_start = 24 }, return = { days_from_start = 28 } }
+actions = ["select_fare", "continue_checkout"]
+
+[[tasks]]
+id = "southwest-earliest-las-phx"
+split = "test"
+instruction = "What is the earliest Southwest flight from Las Vegas (LAS) to Phoenix (PHX) on {{date}}? Report its flight number, departure time, whether it is nonstop, and the cheapest fare available on it."
+fixture = { date = { days_from_start = 20 } }

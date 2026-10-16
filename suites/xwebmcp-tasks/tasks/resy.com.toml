@@ -1,0 +1,24 @@
+site = "resy.com"
+start_url = "https://resy.com/"
+
+[[tasks]]
+id = "resy-italian-nyc"
+split = "train"
+instruction = "Find three Italian restaurants in New York that Resy lists. Report each one's name and neighborhood."
+
+[[tasks]]
+id = "resy-nyc-table-for-two"
+split = "train"
+instruction = "Find three restaurants in New York on Resy with a table for 2 open on {{date}} between 7:00 PM and 8:30 PM. Report each one's name, neighborhood and one open time in that window. Do not book anything."
+fixture = { date = { days_from_start = 9 } }
+
+[[tasks]]
+id = "resy-la-collections"
+split = "validation"
+instruction = "List the curated collections Resy shows for Los Angeles, such as top-rated or new restaurants, and name three restaurants from one of them."
+
+[[tasks]]
+id = "resy-sf-japanese-for-four"
+split = "test"
+instruction = "Find three Japanese restaurants in San Francisco on Resy with a table for 4 open on {{date}} between 6:00 PM and 8:00 PM. Report each one's name, neighborhood and one open time in that window. Do not book anything."
+fixture = { date = { days_from_start = 10 } }

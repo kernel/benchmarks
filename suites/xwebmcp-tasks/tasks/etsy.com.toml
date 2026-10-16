@@ -1,0 +1,23 @@
+site = "etsy.com"
+start_url = "https://www.etsy.com/"
+
+[[tasks]]
+id = "etsy-ceramic-mug-listings"
+split = "train"
+instruction = "Search Etsy for \"handmade ceramic mug\" and report the first three listings in the results, with each one's title, price and shop name."
+
+[[tasks]]
+id = "etsy-leather-keychain"
+split = "train"
+instruction = "Find a personalized leather keychain on Etsy that costs less than $20 and whose shop has a rating of at least 4.8 stars. Report its title, price, shop name and the shop's rating."
+
+[[tasks]]
+id = "etsy-napkins-in-cart"
+split = "validation"
+instruction = "Add one set of linen napkins to the Etsy cart, choosing any options the listing requires. Report the listing's title, the options you chose, its price and the cart total. Do not check out."
+actions = ["add_to_cart"]
+
+[[tasks]]
+id = "etsy-cheapest-felt-slippers"
+split = "test"
+instruction = "Search Etsy for \"wool felt slippers\" and report the three cheapest listings on the first page of results, with each one's title, price and shop name."

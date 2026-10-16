@@ -1,0 +1,27 @@
+site = "google.com"
+start_url = "https://www.google.com/travel/flights"
+
+[[tasks]]
+id = "google-flights-cheapest-one-way"
+split = "train"
+instruction = "On Google Flights, find the cheapest one-way flight for 1 adult from New York (JFK) to Los Angeles (LAX) on {{date}}. Report the airline, flight number(s), departure time, number of stops and price."
+fixture = { date = { days_from_start = 21 } }
+
+[[tasks]]
+id = "google-flights-nonstop-round-trip"
+split = "train"
+instruction = "On Google Flights, find the cheapest nonstop round trip for 1 adult from San Francisco (SFO) to Seattle (SEA), leaving {{depart}} and returning {{return}}. Report the airline, both flights' numbers and departure times, and the round-trip price."
+fixture = { depart = { days_from_start = 24 }, return = { days_from_start = 27 } }
+
+[[tasks]]
+id = "google-flights-booking-options"
+split = "validation"
+instruction = "On Google Flights, pick the cheapest nonstop one-way flight for 1 adult from Boston (BOS) to Chicago O'Hare (ORD) on {{date}} and open its booking options. Report the flight, and each seller Google lists with its price. Do not continue to any airline or travel agency site."
+fixture = { date = { days_from_start = 22 } }
+actions = ["select_flight"]
+
+[[tasks]]
+id = "google-flights-atl-mia-nonstop"
+split = "test"
+instruction = "On Google Flights, find the cheapest nonstop one-way flight for 1 adult from Atlanta (ATL) to Miami (MIA) on {{date}}. Report the airline, flight number, departure time and price."
+fixture = { date = { days_from_start = 20 } }

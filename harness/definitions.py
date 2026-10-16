@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +28,7 @@ class Arm:
     toolset: str
     agent_version: str | None = None
     browser: Browser = field(default_factory=Browser)
+    toolset_args: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,7 @@ class Benchmark:
     name: str
     suite: str
     arms: list[str]
+    suite_args: dict[str, Any] = field(default_factory=dict)
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -44,7 +47,12 @@ def _read(path: Path) -> dict[str, Any]:
 
 def load_benchmark(name: str) -> Benchmark:
     data = _read(ROOT / "benchmarks" / f"{name}.toml")
-    return Benchmark(name=name, suite=data["suite"], arms=list(data["arms"]))
+    return Benchmark(
+        name=name,
+        suite=data["suite"],
+        arms=list(data["arms"]),
+        suite_args=data.get("suite_args", {}),
+    )
 
 
 def load_arm(name: str) -> Arm:
@@ -69,5 +77,7 @@ def _load_module(path: Path) -> ModuleType:
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Registered before it runs, as an import would be, so dataclasses work.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module

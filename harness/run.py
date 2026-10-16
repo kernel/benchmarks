@@ -8,6 +8,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from harness import preflight
 from harness.configure import configure_tasks
@@ -38,13 +39,26 @@ def prepare(
     task_ids: list[str] | None,
     work_dir: Path,
     toolset_ref: str | None = None,
+    suite_args: dict[str, Any] | None = None,
+    toolset_args: dict[str, Any] | None = None,
 ) -> list[PreparedArm]:
+    """Generate the suite's tasks and apply each arm's browser settings and toolset.
+
+    `suite_args` overrides the benchmark's `suite_args`. `toolset_args`
+    overrides the keys an arm's `toolset_args` already sets, so an arm whose
+    toolset does not take an argument keeps running without it. A key no arm
+    of the benchmark sets is refused as a likely typo.
+    """
     benchmark = load_benchmark(benchmark_name)
     arms = [load_arm(name) for name in (arm_names or benchmark.arms)]
+    known = {key for arm in [*arms, *map(load_arm, benchmark.arms)] for key in arm.toolset_args}
+    unknown = set(toolset_args or {}) - known
+    if unknown:
+        raise SystemExit(f"No arm takes toolset args: {', '.join(sorted(unknown))}")
     suite = load_suite(benchmark.suite)
 
     base = work_dir / "tasks"
-    task_dirs = suite.generate(task_ids, base)
+    task_dirs = suite.generate(task_ids, base, **{**benchmark.suite_args, **(suite_args or {})})
     if not task_dirs:
         raise SystemExit("The suite generated no tasks")
 
@@ -54,7 +68,10 @@ def prepare(
         shutil.copytree(base, dataset)
         arm_tasks = sorted(path for path in dataset.iterdir() if path.is_dir())
         configurations = configure_tasks(arm_tasks, arm.browser)
-        load_toolset(arm.toolset).apply(arm_tasks, ref=toolset_ref)
+        args = {
+            key: (toolset_args or {}).get(key, value) for key, value in arm.toolset_args.items()
+        }
+        load_toolset(arm.toolset).apply(arm_tasks, ref=toolset_ref, **args)
         prepared.append(PreparedArm(arm, dataset, configurations))
     return prepared
 
@@ -68,6 +85,9 @@ def run(
     run_id: str,
     concurrency: int,
     toolset_ref: str | None = None,
+    suite_args: dict[str, Any] | None = None,
+    toolset_args: dict[str, Any] | None = None,
+    attempts: int = 1,
 ) -> dict[str, int]:
     """Run every arm in parallel and return each arm's Harbor exit status.
 
@@ -78,7 +98,9 @@ def run(
     """
     preflight.check_kernel_project()
     load_suite(load_benchmark(benchmark_name).suite).preflight()
-    prepared = prepare(benchmark_name, arm_names, task_ids, work_dir, toolset_ref)
+    prepared = prepare(
+        benchmark_name, arm_names, task_ids, work_dir, toolset_ref, suite_args, toolset_args
+    )
 
     jobs_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = jobs_dir / f"run-{run_id}.json"
@@ -97,7 +119,7 @@ def run(
         job_name = f"{item.arm.name}-{run_id}"
         with (jobs_dir / f"{job_name}.log").open("w") as log:
             processes[item.arm.name] = subprocess.Popen(
-                harbor_command(item, jobs_dir, job_name, concurrency),
+                harbor_command(item, jobs_dir, job_name, concurrency, attempts),
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
@@ -107,7 +129,9 @@ def run(
     return {name: entry["status"] for name, entry in manifest.items()}
 
 
-def harbor_command(item: PreparedArm, jobs_dir: Path, job_name: str, concurrency: int) -> list[str]:
+def harbor_command(
+    item: PreparedArm, jobs_dir: Path, job_name: str, concurrency: int, attempts: int = 1
+) -> list[str]:
     arm = item.arm
     command = [
         str(Path(sys.executable).parent / "harbor"),
@@ -119,6 +143,7 @@ def harbor_command(item: PreparedArm, jobs_dir: Path, job_name: str, concurrency
         "--job-name", job_name,
         "--jobs-dir", str(jobs_dir),
         "--n-concurrent", str(concurrency),
+        "--n-attempts", str(attempts),
         "--max-retries", "5",
         "--delete",
         "--yes",

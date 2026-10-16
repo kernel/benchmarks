@@ -1,0 +1,28 @@
+site = "amctheatres.com"
+start_url = "https://www.amctheatres.com/"
+
+[[tasks]]
+id = "amc-nearest-theatre"
+split = "train"
+instruction = "Which AMC theatre is closest to ZIP code 60611 (downtown Chicago)? Report its name, address and distance."
+actions = ["navigate_to_page"]
+
+[[tasks]]
+id = "amc-now-playing"
+split = "train"
+instruction = "List the first 10 movies AMC shows as Now Playing, with each one's runtime and rating."
+actions = ["navigate_to_page"]
+
+[[tasks]]
+id = "amc-evening-ticket-price"
+split = "validation"
+instruction = "At AMC Empire 25 in New York on {{date}}, pick any movie with a showtime after 6:00 PM and find the price of one Adult ticket for it, including fees, without buying anything. Report the movie, the showtime and the price."
+fixture = { date = { days_from_start = 3 } }
+actions = ["navigate_to_page"]
+
+[[tasks]]
+id = "amc-lincoln-square-showtimes"
+split = "test"
+instruction = "What is playing at AMC Lincoln Square 13 in New York on {{date}}? List up to 5 movies with all of each one's showtimes that day."
+fixture = { date = { days_from_start = 2 } }
+actions = ["navigate_to_page"]

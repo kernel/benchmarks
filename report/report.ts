@@ -3,9 +3,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   type ArmSummary,
+  compareTasks,
+  medianSpeedup,
   parseArmSpec,
   readBenchmarkArm,
   summarizeArm,
+  type TaskComparison,
 } from "./results";
 
 interface Options {
@@ -81,11 +84,55 @@ function cost(value: number | undefined): string {
   return value === undefined ? "—" : `$${value.toFixed(4)}`;
 }
 
+function renderRewardTables(
+  summaries: ArmSummary[],
+  comparisons: TaskComparison[],
+): string[] {
+  const lines = [
+    "| Arm | Configuration | Success | Finalized | Infra | Retries | Kernel MCP valid | WebMCP invoked | xwebmcp registered | Median agent time | Median agent time, successes | Median calls | Cost |",
+    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  ];
+  for (const summary of summaries) {
+    lines.push(
+      `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${ratio(summary.finalized, summary.trials)} | ${summary.infraErrors} | ${summary.retries} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${ratio(summary.webmcpInvoked, summary.webmcpChecked)} | ${ratio(summary.xwebmcpRegistered, summary.xwebmcpChecked)} | ${duration(summary.medianAgentMs)} | ${duration(summary.medianSuccessAgentMs)} | ${summary.medianCalls ?? "—"} | ${cost(summary.totalCostUsd)} |`,
+    );
+  }
+  if (summaries.length < 2 || comparisons.length === 0) return lines;
+
+  const arms = summaries.map((summary) => summary.arm);
+  lines.push(
+    "",
+    `| Task | ${arms.map((arm) => `${arm} success | ${arm} median agent time`).join(" | ")} |`,
+    `|---|${arms.map(() => "---:|---:").join("|")}|`,
+  );
+  for (const comparison of comparisons) {
+    const cells = arms.map((arm) => {
+      const result = comparison.arms[arm];
+      return result
+        ? `${result.successes}/${result.trials} | ${duration(result.medianAgentMs)}`
+        : "— | —";
+    });
+    lines.push(`| ${comparison.task} | ${cells.join(" | ")} |`);
+  }
+  const [baseline, ...candidates] = arms;
+  for (const candidate of candidates) {
+    const { speedup, tasks } = medianSpeedup(comparisons, baseline, candidate);
+    if (speedup !== undefined) {
+      lines.push(
+        "",
+        `${candidate} vs ${baseline}: median speedup ${speedup.toFixed(2)}× in agent time, over the ${tasks} ${tasks === 1 ? "task" : "tasks"} both arms succeeded on.`,
+      );
+    }
+  }
+  return lines;
+}
+
 export function renderMarkdown(
   title: string,
   summaries: ArmSummary[],
   publication?: Record<string, unknown>,
   statuses: Record<string, number> = {},
+  comparisons: TaskComparison[] = [],
 ): string {
   const lines = [`## ${title}`];
   const failed = Object.entries(statuses).filter(([, status]) => status !== 0);
@@ -103,15 +150,22 @@ export function renderMarkdown(
       `> [!WARNING]\n> Incomplete benchmark: ${reasons.join(", ")}. Scores below include only completed Harbor results.`,
     );
   }
-  lines.push(
-    "",
-    "| Arm | Configuration | Lenient | Strict | Intercepted | Infra | Retries | Ungraded | Kernel MCP valid | Median calls | Median duration | Cost |",
-    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  const clawbench = summaries.some(
+    (summary) => summary.scoring === "clawbench",
   );
-  for (const summary of summaries) {
+  lines.push("");
+  if (clawbench) {
     lines.push(
-      `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${ratio(summary.strict, summary.trials)} | ${ratio(summary.intercepted, summary.trials)} | ${summary.infraErrors} | ${summary.retries} | ${summary.ungraded} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${summary.medianCalls ?? "—"} | ${duration(summary.medianDurationMs)} | ${cost(summary.totalCostUsd)} |`,
+      "| Arm | Configuration | Lenient | Strict | Intercepted | Infra | Retries | Ungraded | Kernel MCP valid | Median calls | Median duration | Cost |",
+      "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     );
+    for (const summary of summaries) {
+      lines.push(
+        `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${ratio(summary.strict, summary.trials)} | ${ratio(summary.intercepted, summary.trials)} | ${summary.infraErrors} | ${summary.retries} | ${summary.ungraded} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${summary.medianCalls ?? "—"} | ${duration(summary.medianDurationMs)} | ${cost(summary.totalCostUsd)} |`,
+      );
+    }
+  } else {
+    lines.push(...renderRewardTables(summaries, comparisons));
   }
 
   if (typeof publication?.url === "string") {
@@ -129,7 +183,9 @@ export function renderMarkdown(
   }
   lines.push(
     "",
-    "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator.",
+    clawbench
+      ? "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator."
+      : "Success is the agent's own report through `finalize`. Agent time is the agent's execution, without environment and agent setup. Infrastructure failures remain in the intended-task denominator.",
     "",
   );
   return lines.join("\n");
@@ -145,6 +201,7 @@ function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const arms = options.arms.map(parseArmSpec).map(readBenchmarkArm);
   const summaries = arms.map(summarizeArm);
+  const comparisons = compareTasks(arms);
   const publication = options.publication
     ? (JSON.parse(readFileSync(options.publication, "utf8")) as Record<
         string,
@@ -155,6 +212,7 @@ function main(): void {
     benchmark: process.env.BENCHMARK_NAME,
     generatedAt: new Date().toISOString(),
     arms: summaries,
+    tasks: comparisons,
     statuses: options.statuses,
     publication,
   };
@@ -163,6 +221,7 @@ function main(): void {
     summaries,
     publication,
     options.statuses,
+    comparisons,
   );
   write(options.json, `${JSON.stringify(result, undefined, 2)}\n`);
   write(options.markdown, rendered);
