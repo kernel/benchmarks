@@ -105,6 +105,21 @@ The job summary shows a table per arm. When Braintrust is configured, each run i
 
 GitHub stops jobs after six hours. Arms still running then are reported as incomplete. Lower the task count or raise `concurrency` for large runs.
 
+### Smoke-testing agent versions
+
+A new agent version can change how tool calls are recorded or which built-in tools the agent has, which unit tests don't see. `bench smoke` checks each agent configuration without a browser:
+
+```bash
+uv run bench smoke                                    # one arm per distinct agent, version, model and agent kwargs
+uv run bench smoke codex-repl --agent-version 0.163.0 # one arm at another version
+```
+
+Each runs the arm's agent through Harbor on a local Docker task whose only tool is a stdio MCP server with one `finalize` tool. It passes when the server logs the call, the verifier scores it, and Harbor converts the agent's session into a `trajectory.json` with tool calls, token counts and cost. The summary lists the tool names the trajectory shows, so two versions can be compared. It needs Docker and `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`, and costs a few cents.
+
+### Pinned dependency updates
+
+`nightly-pinned-deps.yml` runs a [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) agent every night with [the prompt next to it](.github/workflows/nightly-pinned-deps-prompt.md). It moves every pin to its latest release: agent versions in `arms/`, Harbor, ClawBench, the Kernel SDK, Playwright MCP, toolset image packages, workflow actions and report packages. It verifies each change, runs `bench smoke`, and merges one evergreen pull request when CI and the smoke tests pass. Models and agent settings in arms are never changed. The pull request and the squash commit list every version change first, so a shift in results can be traced to it.
+
 ## Current benchmarks
 
 ### `kernel-mcp-clawbench`
