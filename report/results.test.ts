@@ -191,6 +191,9 @@ function selfReportedArm(name: string, agentSeconds: number[]): BenchmarkArm {
     rewards: {
       reward: index === 0 ? 1 : 0,
       finalized: 1,
+      outcome_failed: 0,
+      outcome_website_error: index === 0 ? 0 : 1,
+      outcome_kernel_error: 0,
       kernel_mcp_valid: 1,
       webmcp_invoked: name === "treatment" ? 1 : 0,
     },
@@ -210,6 +213,9 @@ describe("Harbor result ingestion", () => {
       scoring: "reward",
       lenient: 1,
       finalized: 2,
+      failed: 0,
+      websiteErrors: 1,
+      kernelErrors: 0,
       webmcpInvoked: 2,
       webmcpChecked: 2,
       medianAgentMs: 75_000,
@@ -240,7 +246,10 @@ describe("Harbor result ingestion", () => {
       {},
       comparisons,
     );
-    expect(markdown).toContain("| Success | Finalized |");
+    expect(markdown).toContain(
+      "| Success | Failed | Website error | Kernel error | No report |",
+    );
+    expect(markdown).toContain("| 1/2 | 0 | 1 | 0 | 0 |");
     expect(markdown).not.toContain("Lenient");
     expect(markdown).toContain("| find-fare | 1/1 | 90s | 1 | 1/1 | 30s | 1 |");
     expect(markdown).toContain("median speedup 3.00×");

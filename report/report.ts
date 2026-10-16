@@ -89,12 +89,12 @@ function renderRewardTables(
   comparisons: TaskComparison[],
 ): string[] {
   const lines = [
-    "| Arm | Configuration | Success | Finalized | Infra | Retries | Kernel MCP valid | WebMCP invoked | xwebmcp registered | Median agent time | Median agent time, successes | Median calls | Cost |",
-    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    "| Arm | Configuration | Success | Failed | Website error | Kernel error | No report | Infra | Retries | Kernel MCP valid | WebMCP invoked | xwebmcp registered | Median agent time | Median agent time, successes | Median calls | Cost |",
+    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
   ];
   for (const summary of summaries) {
     lines.push(
-      `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${ratio(summary.finalized, summary.trials)} | ${summary.infraErrors} | ${summary.retries} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${ratio(summary.webmcpInvoked, summary.webmcpChecked)} | ${ratio(summary.xwebmcpRegistered, summary.xwebmcpChecked)} | ${duration(summary.medianAgentMs)} | ${duration(summary.medianSuccessAgentMs)} | ${summary.medianCalls ?? "—"} | ${cost(summary.totalCostUsd)} |`,
+      `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${summary.failed ?? "—"} | ${summary.websiteErrors ?? "—"} | ${summary.kernelErrors ?? "—"} | ${summary.finalized === undefined ? "—" : summary.scored - summary.finalized} | ${summary.infraErrors} | ${summary.retries} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${ratio(summary.webmcpInvoked, summary.webmcpChecked)} | ${ratio(summary.xwebmcpRegistered, summary.xwebmcpChecked)} | ${duration(summary.medianAgentMs)} | ${duration(summary.medianSuccessAgentMs)} | ${summary.medianCalls ?? "—"} | ${cost(summary.totalCostUsd)} |`,
     );
   }
   if (summaries.length < 2 || comparisons.length === 0) return lines;
@@ -185,7 +185,7 @@ export function renderMarkdown(
     "",
     clawbench
       ? "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator."
-      : "Success is the agent's own report through `finalize`. Agent time is the agent's execution, without environment and agent setup. Infrastructure failures remain in the intended-task denominator.",
+      : "Outcomes are the agent's own report through `finalize`: failed (the agent's own failure), website error (the site errored or blocked it) or Kernel error (the browser or its tools failed). No report means it never called `finalize`, usually because it hit the time cap. Infra counts trials Harbor could not run. Agent time is the agent's execution, without environment and agent setup.",
     "",
   );
   return lines.join("\n");

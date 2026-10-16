@@ -89,6 +89,10 @@ export interface ArmSummary {
   /** "clawbench" when trials report reward_lenient, else "reward" (one binary reward). */
   scoring: "clawbench" | "reward";
   finalized?: number;
+  /** Self-reported outcomes other than success, from outcome_<name> rewards. */
+  failed?: number;
+  websiteErrors?: number;
+  kernelErrors?: number;
   webmcpInvoked?: number;
   webmcpChecked: number;
   xwebmcpRegistered?: number;
@@ -504,6 +508,12 @@ export function summarizeArm(arm: BenchmarkArm): ArmSummary {
       ? "clawbench"
       : "reward",
     finalized: sum(numeric("finalized"), "finalized"),
+    failed: sum(numeric("outcome_failed"), "outcome_failed"),
+    websiteErrors: sum(
+      numeric("outcome_website_error"),
+      "outcome_website_error",
+    ),
+    kernelErrors: sum(numeric("outcome_kernel_error"), "outcome_kernel_error"),
     webmcpInvoked: sum(webmcp, "webmcp_invoked"),
     webmcpChecked: webmcp.length,
     xwebmcpRegistered: sum(registered, "xwebmcp_registered"),

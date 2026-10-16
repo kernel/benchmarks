@@ -102,38 +102,50 @@ def test_finalize_records_the_first_report_only(tmp_path):
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "x"}},
         {"jsonrpc": "2.0", "method": "notifications/initialized"},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-        call(3, evidence="Price $22", reasoning="Shown on the page", success=True),
-        call(4, evidence="again", reasoning="again", success=False),
+        call(3, evidence="Price $22", reasoning="Shown on the page", outcome="success"),
+        call(4, evidence="again", reasoning="again", outcome="failed"),
     )
     assert [response["id"] for response in responses] == [1, 2, 3, 4]
     assert responses[0]["result"]["protocolVersion"] == "x"
     schema = responses[1]["result"]["tools"][0]["inputSchema"]
-    assert list(schema["properties"]) == ["evidence", "reasoning", "success"]
+    assert list(schema["properties"]) == ["evidence", "reasoning", "outcome"]
+    assert schema["properties"]["outcome"]["enum"] == [
+        "success",
+        "failed",
+        "website_error",
+        "kernel_error",
+    ]
     assert responses[2]["result"]["isError"] is False
     assert responses[3]["result"]["isError"] is True
     report = json.loads((tmp_path / "finalize.json").read_text())
-    assert report["success"] is True
+    assert report["outcome"] == "success"
     assert report["evidence"] == "Price $22"
 
 
-def test_finalize_refuses_an_empty_report(tmp_path):
-    responses = run_finalize(tmp_path, call(1, evidence="", reasoning="r", success=True))
-    assert responses[0]["result"]["isError"] is True
+def test_finalize_refuses_an_incomplete_report(tmp_path):
+    responses = run_finalize(
+        tmp_path,
+        call(1, evidence="", reasoning="r", outcome="success"),
+        call(2, evidence="e", reasoning="r", outcome="maybe"),
+    )
+    assert [response["result"]["isError"] for response in responses] == [True, True]
     assert not (tmp_path / "finalize.json").exists()
 
 
 @pytest.mark.parametrize(
-    ("report", "expected"),
+    ("outcome", "expected"),
     [
-        ({"success": True, "evidence": "e", "reasoning": "r"}, {"reward": 1.0, "finalized": 1.0}),
-        ({"success": False, "evidence": "e", "reasoning": "r"}, {"reward": 0.0, "finalized": 1.0}),
+        ("success", {"reward": 1.0, "finalized": 1.0}),
+        ("website_error", {"reward": 0.0, "finalized": 1.0, "outcome_website_error": 1.0}),
+        ("kernel_error", {"reward": 0.0, "finalized": 1.0, "outcome_kernel_error": 1.0}),
         (None, {"reward": 0.0, "finalized": 0.0}),
     ],
 )
-def test_score_rewards_reported_success(tmp_path, report, expected):
+def test_score_rewards_reported_success(tmp_path, outcome, expected):
     agent, verifier = tmp_path / "agent", tmp_path / "verifier"
     agent.mkdir()
-    if report is not None:
+    if outcome is not None:
+        report = {"outcome": outcome, "evidence": "e", "reasoning": "r"}
         (agent / "finalize.json").write_text(json.dumps(report))
     script = (
         (BENCH / "score")
@@ -142,4 +154,5 @@ def test_score_rewards_reported_success(tmp_path, report, expected):
         .replace('Path("/logs/verifier")', f"Path({str(verifier)!r})")
     )
     subprocess.run(["python3", "-c", script], check=True, env=os.environ)
-    assert json.loads((verifier / "reward.json").read_text()) == expected
+    failures = {"outcome_failed": 0.0, "outcome_website_error": 0.0, "outcome_kernel_error": 0.0}
+    assert json.loads((verifier / "reward.json").read_text()) == {**failures, **expected}

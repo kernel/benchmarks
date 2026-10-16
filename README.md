@@ -130,12 +130,12 @@ How much a site's [xwebmcp](https://github.com/kernel/xwebmcp) tools help an age
 
 - **Same tools and instruction in both arms.** Both arms get the same instruction: list the page's WebMCP tools with `webmcp.listTools()` in the REPL and use one when it fits. The treatment arm's page simply lists more tools. It gets the site's read-only tools, plus the tools that change site state that a task names in `actions`, such as `add_to_cart` for a cart task. Tools xwebmcp marks `broken` are left out.
 - **Same start.** Before the agent starts, setup opens the task's start URL, so neither arm spends its own time loading the site.
-- **Self-reported success.** The agent ends each task by calling the `finalize` tool of a `bench` MCP server, with three inputs:
+- **Self-reported outcome.** The agent ends each task by calling the `finalize` tool of a `bench` MCP server, with three inputs:
   - `evidence`: what it saw, including the answer;
   - `reasoning`: the evidence checked against each requirement of the task;
-  - `success`: true or false.
+  - `outcome`: `success`, `failed` (its own failure, or the site doesn't offer what the task asks for), `website_error` (the site errored or blocked it: a third-party failure) or `kernel_error` (the browser, REPL or a WebMCP tool failed: a first-party failure).
 
-  `reward` is 1 when the agent reported success, and 0 when it reported failure or never called `finalize`. No judge checks the report. The report is kept as `verifier/finalize.json` in each trial, so an external judge can grade the same trials later.
+  `reward` is 1 for `success` and 0 otherwise, including when the agent never called `finalize`; `outcome_<name>` records each other outcome. No judge checks the report. The report is kept as `verifier/finalize.json` in each trial, so an external judge can grade the same trials later.
 - **Speed.** The report compares agent time: the agent's own execution, without environment and agent setup. It shows the median per arm, a per-task table, and the treatment's median speedup over the tasks both arms completed.
 - **Other rewards.** `webmcp_invoked` records whether the agent called `webmcp.invokeTool` (both arms). `xwebmcp_registered` records whether the tools were registered (treatment). `kernel_mcp_valid` records whether the agent drove its assigned browser through `browser_repl`.
 

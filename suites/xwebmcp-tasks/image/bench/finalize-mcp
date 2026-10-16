@@ -3,8 +3,11 @@
 
 The first call writes the report to /logs/agent/finalize.json, where the
 verifier reads it; later calls are refused, so the first report stands.
-`evidence` and `reasoning` come before `success` in the schema so the agent
+`evidence` and `reasoning` come before `outcome` in the schema so the agent
 writes down what it saw and checks it before it gives a verdict.
+
+`outcome` separates the agent's own failures from failures it could not
+control: the website's (third party) and Kernel's (first party).
 """
 
 from __future__ import annotations
@@ -16,6 +19,22 @@ from pathlib import Path
 from typing import Any
 
 REPORT = Path("/logs/agent/finalize.json")
+
+OUTCOMES = {
+    "success": "every requirement of the task is met and the evidence shows it.",
+    "failed": (
+        "the task is not done, including when what the task asks for does not exist or is "
+        "unavailable on the site."
+    ),
+    "website_error": (
+        "the website kept you from finishing: it showed an error, failed to load, or blocked "
+        "you, for example with a bot check or an access-denied page."
+    ),
+    "kernel_error": (
+        "the Kernel browser or its tools kept you from finishing: the browser REPL, a WebMCP "
+        "tool or the browser itself errored, hung, or crashed."
+    ),
+}
 
 TOOL = {
     "name": "finalize",
@@ -42,15 +61,14 @@ TOOL = {
                     "whether it is met. Name anything you could not verify."
                 ),
             },
-            "success": {
-                "type": "boolean",
-                "description": (
-                    "true only if every requirement of the task is met and the evidence shows "
-                    "it; otherwise false."
-                ),
+            "outcome": {
+                "type": "string",
+                "enum": list(OUTCOMES),
+                "description": "How the task ended. "
+                + " ".join(f"{name}: {meaning}" for name, meaning in OUTCOMES.items()),
             },
         },
-        "required": ["evidence", "reasoning", "success"],
+        "required": ["evidence", "reasoning", "outcome"],
         "additionalProperties": False,
     },
     "annotations": {"readOnlyHint": False, "idempotentHint": False},
@@ -60,18 +78,18 @@ TOOL = {
 def finalize(arguments: dict[str, Any]) -> tuple[str, bool]:
     if REPORT.exists():
         return "The task was already finalized. Stop now.", True
-    evidence, reasoning, success = (
-        arguments.get(key) for key in ("evidence", "reasoning", "success")
+    evidence, reasoning, outcome = (
+        arguments.get(key) for key in ("evidence", "reasoning", "outcome")
     )
     if not isinstance(evidence, str) or not evidence.strip():
         return "evidence must be a non-empty string.", True
     if not isinstance(reasoning, str) or not reasoning.strip():
         return "reasoning must be a non-empty string.", True
-    if not isinstance(success, bool):
-        return "success must be true or false.", True
+    if outcome not in OUTCOMES:
+        return f"outcome must be one of {', '.join(OUTCOMES)}.", True
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     report = {
-        "success": success,
+        "outcome": outcome,
         "evidence": evidence,
         "reasoning": reasoning,
         "finalized_at": datetime.now(UTC).isoformat(),
