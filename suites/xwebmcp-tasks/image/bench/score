@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Turn the agent's finalize report into the task's rewards.
+
+`reward` is 1 when the agent reported success, and 0 for any other outcome or
+when it never called finalize. `finalized` records whether it called
+finalize, and `outcome_<name>` which failure it reported, so failures caused
+by the website or by Kernel can be told apart from the agent's own.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+
+REPORT = Path("/logs/agent/finalize.json")
+TASK = Path("/opt/bench/task.json")
+VERIFIER = Path("/logs/verifier")
+FAILURES = ("failed", "website_error", "kernel_error")
+
+
+def main() -> int:
+    VERIFIER.mkdir(parents=True, exist_ok=True)
+    try:
+        report = json.loads(REPORT.read_text())
+    except (OSError, json.JSONDecodeError):
+        report = None
+    if report is not None:
+        shutil.copy2(REPORT, VERIFIER / "finalize.json")
+    # The task's site and split, so reports can group trials by them.
+    if TASK.exists():
+        shutil.copy2(TASK, VERIFIER / "task.json")
+    outcome = report.get("outcome") if report is not None else None
+    rewards = {
+        "reward": float(outcome == "success"),
+        "finalized": float(report is not None),
+        **{f"outcome_{name}": float(outcome == name) for name in FAILURES},
+    }
+    (VERIFIER / "reward.json").write_text(json.dumps(rewards, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

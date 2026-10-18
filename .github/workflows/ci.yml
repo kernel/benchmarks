@@ -24,6 +24,8 @@ jobs:
       - run: uv run pytest -q
       - name: Prepare every static arm for one task
         run: uv run bench prepare kernel-mcp-clawbench --arms codex-kernel-mcp,claude-kernel-mcp --tasks v2-1134-chapter-finder-redcross --out "$RUNNER_TEMP/prepared"
+      - name: Prepare both xwebmcp-repl arms for the test split
+        run: uv run bench prepare xwebmcp-repl --out "$RUNNER_TEMP/prepared-xwebmcp"
 
   report:
     runs-on: ubuntu-latest

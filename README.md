@@ -72,7 +72,7 @@ uv run bench run kernel-mcp-clawbench \
 
 Harbor writes one job directory per arm under `jobs/`, containing rewards, trajectories, and verifier output. To summarize jobs, run `bun report/report.ts --arm <name>=<job dir>` (needs [Bun](https://bun.sh)).
 
-`--tasks` takes comma-separated task IDs or `all`. `--concurrency` sets concurrent trials per arm. `--toolset-ref` builds a toolset from a specific git ref, e.g. a Kernel MCP server branch.
+`--tasks` takes comma-separated task IDs or `all`. `--concurrency` sets concurrent trials per arm, and `--attempts` the trials per task and arm. `--toolset-ref` builds a toolset from a specific git ref, e.g. a Kernel MCP server branch. `--suite-arg KEY=VALUE` overrides one of the benchmark's `suite_args`, and `--toolset-arg KEY=VALUE` one of the `toolset_args` of the arms that set it.
 
 The run also writes `jobs/run-<id>.json`, which maps each arm to its job directory, exit status, and the browser settings and site guidance each task got.
 
@@ -117,7 +117,55 @@ The Kernel MCP server on ClawBench.
 | `codex-kernel-mcp-site-config` | Codex, `gpt-5.6-luna` | From Kernel's config registry per site, plus the registry's guidance in the instruction. On Indeed, for example, it picks a US ISP proxy; the stealth-only arm was stopped by Cloudflare there. |
 | `claude-kernel-mcp` | Claude Code, `claude-sonnet-5` | Stealth |
 
-ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whether the agent called Kernel MCP's `execute_playwright_code` and used its assigned browser on every call, so a failed task can be told apart from a trial that never used the toolset.
+ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whether the agent called Kernel MCP's browser tool and used its assigned browser on every call, so a failed task can be told apart from a trial that never used the toolset. It reads the calls the Kernel MCP server received, logged by a stdio wrapper, so it works the same for agents that nest MCP calls, such as Codex's code mode.
+
+### `xwebmcp-repl`
+
+How much a site's [xwebmcp](https://github.com/kernel/xwebmcp) tools help an agent that drives the browser through Kernel MCP's browser REPL, and how the REPL compares with Playwright MCP, on the `xwebmcp-tasks` suite: everyday tasks on the sites xwebmcp has tools for, such as finding the cheapest fare on delta.com or putting a coffee in the cart on bluebottlecoffee.com.
+
+| Arm | Agent | Browser tools |
+|---|---|---|
+| `codex-repl` | Codex 0.163.0, `gpt-6-luna` | `browser_repl` |
+| `codex-repl-xwebmcp` | Codex 0.163.0, `gpt-6-luna` | `browser_repl`, plus the site's xwebmcp tools registered in the browser before the agent starts |
+| `codex-playwright-mcp` | Codex 0.163.0, `gpt-6-luna` | [Playwright MCP](https://github.com/microsoft/playwright-mcp) 0.0.83, connected over CDP to the same stealth Kernel browser. Compare with `codex-repl`; it cannot call WebMCP tools, so it has no xwebmcp counterpart. |
+| `claude-haiku-repl` | Claude Code 2.1.301, `claude-haiku-5-5` | `browser_repl` |
+| `claude-haiku-repl-xwebmcp` | Claude Code 2.1.301, `claude-haiku-5-5` | `browser_repl`, plus the site's xwebmcp tools |
+
+Every arm runs with the agent's own web search and fetch tools off (`disable_web_search`), so answers come from the browser.
+
+- **Same tools and instruction in both arms.** Both arms get the same instruction: list the page's WebMCP tools with `webmcp.listTools()` in the REPL and use one when it fits. The treatment arm's page simply lists more tools. It gets the site's read-only tools, plus the tools that change site state that a task names in `actions`, such as `add_to_cart` for a cart task. Tools xwebmcp marks `broken` are left out.
+- **Same start.** Before the agent starts, setup opens the task's start URL, so neither arm spends its own time loading the site.
+- **Self-reported outcome.** The agent ends each task by calling the `finalize` tool of a `bench` MCP server, with three inputs:
+  - `evidence`: what it saw, including the answer;
+  - `reasoning`: the evidence checked against each requirement of the task;
+  - `outcome`: `success`, `failed` (its own failure, or the site doesn't offer what the task asks for), `website_error` (the site errored or blocked it: a third-party failure) or `kernel_error` (the browser, REPL or a WebMCP tool failed: a first-party failure).
+
+  `reward` is 1 for `success` and 0 otherwise, including when the agent never called `finalize`; `outcome_<name>` records each other outcome. No judge checks the report. The report is kept as `verifier/finalize.json` in each trial, so an external judge can grade the same trials later.
+- **Speed.** The report compares agent time (the agent's own execution, without environment and agent setup) and Kernel MCP browser calls. It shows the median per arm, a per-task table, and each `-xwebmcp` arm's median speedup over its control on the tasks both completed.
+- **Other rewards.** `webmcp_invoked` records whether the agent called `webmcp.invokeTool` (both arms). `xwebmcp_registered` records whether the tools were registered (treatment). `kernel_mcp_valid` records whether the agent drove its assigned browser through `browser_repl`.
+
+#### Splits
+
+Each site has four tasks: two `train`, one `validation` and one `test`. The benchmark runs `test` by default, and that is the only split to compare arms on:
+
+```bash
+uv run bench run xwebmcp-repl --attempts 3
+gh workflow run xwebmcp-repl.yml -f attempts=3
+```
+
+To improve the tools without overfitting them to the tasks they are scored on:
+
+1. **Train.** Run the treatment arm on `train` with your xwebmcp branch. Read the trajectories (`agent/trajectory.json`) and finalize reports of the failing or slow trials, and change the tools:
+   ```bash
+   uv run bench run xwebmcp-repl --arms codex-repl-xwebmcp \
+     --suite-arg split=train --toolset-arg xwebmcp_ref=my-branch --attempts 3
+   ```
+2. **Validate.** Run `--suite-arg split=validation` with the same branch and with `main`, and compare scores only. Don't read validation trajectories to fix tools; once you do, the split stops measuring generalization.
+3. **Test.** Once validation improves, run the default `test` split with both arms for the headline numbers. Run it rarely, never to choose between tool changes.
+
+Sites change: compare arms within one run, and rerun the baseline when you compare a branch with `main`.
+
+Task files are `suites/xwebmcp-tasks/tasks/<site>.toml`. `{{name}}` in an instruction comes from the task's `fixture`, and `{ days_from_start = n }` becomes a date `n` days after the run starts.
 
 ## Extending
 
@@ -140,6 +188,8 @@ model = "anthropic/claude-haiku-5-5"
 steering = true
 ```
 
+`[toolset_args]` passes keyword arguments to the toolset's `apply`, such as `toolsets = ["repl"]` for `kernel-mcp-local`. `[agent_kwargs]` passes options to the Harbor agent, such as `disable_web_search = true`.
+
 `config` takes any [`POST /browsers`](https://kernel.sh/docs/api-reference/browsers/create-a-browser-session) parameter, such as `stealth`, `proxy`, `region`, `extensions`, or `viewport`. Browsers are always headful.
 
 ### Add a configurator
@@ -161,12 +211,15 @@ It never sees the verifier's files. `steering` is appended to the task instructi
 
 ### Add a toolset
 
-Create `toolsets/<name>/toolset.py` with `apply(task_dirs, ref=None)`. It edits generated tasks, typically by:
+Create `toolsets/<name>/toolset.py` with `apply(task_dirs, ref=None, **toolset_args)`. It edits generated tasks, typically by:
 
 - appending a layer to `environment/Dockerfile`,
-- setting `environment.mcp_servers` in `task.toml`,
+- adding to `environment.mcp_servers` in `task.toml`,
 - adding instructions,
+- appending a command to step setup, which runs before the agent starts,
 - appending a check to the verifier.
+
+A toolset can build on another: `xwebmcp` applies `kernel-mcp-local` first.
 
 See `harness/tasks.py` for helpers.
 
@@ -175,7 +228,7 @@ See `harness/tasks.py` for helpers.
 Create `suites/<name>/suite.py` with:
 
 - `preflight()`: checks external dependencies before any browser is created.
-- `generate(task_ids, out_dir)`: writes Harbor tasks and returns their directories. The tasks should run on the browser Harbor provides (`KERNEL_SESSION_ID`, `/harbor/kernel/connection.json`) and leave tool wiring to toolsets.
+- `generate(task_ids, out_dir, **suite_args)`: writes Harbor tasks and returns their directories. A benchmark's `[suite_args]` table, such as `split = "test"`, is passed as keyword arguments. The tasks should run on the browser Harbor provides (`KERNEL_SESSION_ID`, `/harbor/kernel/connection.json`) and leave tool wiring to toolsets.
 
 Then add `benchmarks/<name>.toml` and a workflow that calls `_run.yml`.
 
@@ -196,7 +249,7 @@ tests/
 
 - **Live websites change.** Arms in one run share the same time window. Compare arms within a run rather than across days.
 - **The Harbor provider is pinned to a fork.** Harbor is pinned to a `kernel/harbor` commit until [harbor-framework/harbor#2122](https://github.com/harbor-framework/harbor/pull/2122) is released.
-- **Reporting assumes ClawBench.** The report and Braintrust publisher expect ClawBench-shaped rewards and step layout. They will be generalized when a second suite lands.
+- **Reporting expects one Harbor step named `run`.** The report shows ClawBench's columns when trials have `reward_lenient`, and otherwise a single binary `reward` with agent times per task. The Braintrust publisher still expects ClawBench-shaped rewards.
 
 ## License
 

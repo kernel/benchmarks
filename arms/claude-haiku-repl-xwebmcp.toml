@@ -1,0 +1,16 @@
+# Same as claude-haiku-repl, plus the task site's kernel/xwebmcp tools
+# registered in the browser before the agent starts.
+agent = "claude-code"
+model = "claude-haiku-5-5"
+agent_version = "2.1.301"
+toolset = "xwebmcp"
+
+[agent_kwargs]
+disable_web_search = true
+
+[toolset_args]
+toolsets = ["repl"]
+xwebmcp_ref = "main"
+
+[browser]
+config = { stealth = true }

@@ -1,0 +1,31 @@
+site = "southwest.com"
+start_url = "https://www.southwest.com/"
+
+# More constraints: two dates compared.
+[[tasks]]
+id = "southwest-cheaper-of-two-days"
+split = "train"
+instruction = "I can fly Southwest from Dallas Love Field (DAL) to Houston Hobby (HOU) on either {{day1}} or {{day2}}. Which day has the cheaper one-way fare for 1 adult? Report the cheapest flight on each day (flight number, departure time, price) and which day is cheaper."
+fixture = { day1 = { days_from_start = 21 }, day2 = { days_from_start = 22 } }
+
+# More results: the whole results page.
+[[tasks]]
+id = "southwest-all-nonstops"
+split = "train"
+instruction = "List every nonstop Southwest flight from Chicago Midway (MDW) to Denver (DEN) on {{date}}, with each one's departure time, arrival time and lowest fare for 1 adult, and give the range from cheapest to most expensive lowest fare."
+fixture = { date = { days_from_start = 18 } }
+
+# Deeper flow: both legs selected, through to the trip total.
+[[tasks]]
+id = "southwest-round-trip-total"
+split = "validation"
+instruction = "Price a Southwest round trip for 1 adult from Baltimore (BWI) to Orlando (MCO), leaving {{depart}} and returning {{return}}. Choose the cheapest fare on each leg and continue to the page where Southwest shows the trip total. Report both flights, the fare on each, and the trip total including taxes and fees."
+fixture = { depart = { days_from_start = 24 }, return = { days_from_start = 28 } }
+actions = ["select_fare", "continue_checkout"]
+
+# More constraints: time window, nonstop and fare type.
+[[tasks]]
+id = "southwest-morning-nonstop-choice"
+split = "test"
+instruction = "I need a nonstop Southwest flight from Las Vegas (LAS) to Phoenix (PHX) on {{date}} that departs between 7:00 AM and 11:00 AM. Which one has the cheapest Choice fare (not Basic)? Report its flight number, departure time and Choice fare price for 1 adult."
+fixture = { date = { days_from_start = 20 } }

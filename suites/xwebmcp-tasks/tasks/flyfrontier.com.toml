@@ -1,0 +1,30 @@
+site = "flyfrontier.com"
+start_url = "https://www.flyfrontier.com/"
+
+# More constraints: two dates compared.
+[[tasks]]
+id = "frontier-cheaper-of-two-days"
+split = "train"
+instruction = "I can fly Frontier from Denver (DEN) to Las Vegas (LAS) on either {{day1}} or {{day2}}. Which day has the cheaper nonstop fare for 1 adult? Report the cheapest nonstop flight on each day (flight number, departure time, price) and which day is cheaper."
+fixture = { day1 = { days_from_start = 21 }, day2 = { days_from_start = 23 } }
+
+# More constraints: round trip with a return-time window.
+[[tasks]]
+id = "frontier-round-trip"
+split = "train"
+instruction = "Find the cheapest Frontier round trip for 1 adult from Denver (DEN) to Phoenix (PHX), leaving {{depart}} and returning {{return}} on a flight that departs after 3:00 PM. Report the outbound and return flight numbers, departure times and the price of each leg."
+fixture = { depart = { days_from_start = 24 }, return = { days_from_start = 27 } }
+
+# More results: every nonstop of the day.
+[[tasks]]
+id = "frontier-den-mco-nonstops"
+split = "validation"
+instruction = "List every nonstop Frontier flight from Denver (DEN) to Orlando (MCO) on {{date}}, with each one's flight number, departure time and price for 1 adult, and say which is cheapest."
+fixture = { date = { days_from_start = 22 } }
+
+# More constraints: nonstop, time window, two dates.
+[[tasks]]
+id = "frontier-las-den-evening"
+split = "test"
+instruction = "I want an evening Frontier flight from Las Vegas (LAS) to Denver (DEN), departing after 5:00 PM, on either {{day1}} or {{day2}}. Find the cheapest nonstop option across both days and report its date, flight number, departure time and price for 1 adult."
+fixture = { day1 = { days_from_start = 19 }, day2 = { days_from_start = 20 } }

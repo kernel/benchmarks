@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Register the task site's xwebmcp tools in the trial's browser.
+
+Runs at the end of step setup, once the start page is open. Registers every
+tool in /opt/xwebmcp/tools.json as one namespaced batch, removes the ones that
+may change site state unless the task allows them, and records what is
+registered and live on the open page in /run/xwebmcp/registration.json for
+xwebmcp-verify. Exits non-zero, failing the trial's setup, when nothing could
+be registered.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+TOOLS = Path("/opt/xwebmcp")
+RESULT = Path("/run/xwebmcp/registration.json")
+
+
+def api(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+    base = (os.environ.get("KERNEL_BASE_URL") or "https://api.onkernel.com").rstrip("/")
+    request = urllib.request.Request(
+        f"{base}/browsers/{os.environ['KERNEL_SESSION_ID']}/webmcp{path}",
+        data=None if body is None else json.dumps(body).encode(),
+        headers={
+            "Authorization": f"Bearer {os.environ['KERNEL_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+        method=method,
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        text = response.read()
+    return json.loads(text) if text else None
+
+
+def source(file: str) -> str:
+    text = (TOOLS / "tools" / file).read_text().strip()
+    while text.endswith(";"):
+        text = text[:-1].rstrip()
+    return f"...({text})"
+
+
+def main() -> int:
+    manifest = json.loads((TOOLS / "tools.json").read_text())
+    batch = "[" + ",".join(source(tool["file"]) for tool in manifest["tools"]) + "]"
+    added = api(
+        "POST",
+        "/custom-tools",
+        {"namespace": manifest["namespace"], "source": batch, "force_overwrite_namespace": True},
+    )["tools"]
+
+    allowed = set(manifest["actions"])
+    removed = []
+    for tool in added:
+        name = tool["tool"]["name"]
+        read_only = (tool["tool"].get("annotations") or {}).get("readOnlyHint") is True
+        if not read_only and name not in allowed:
+            api("DELETE", f"/custom-tools/{tool['id']}")
+            removed.append(name)
+    registered = sorted(tool["tool"]["name"] for tool in added if tool["tool"]["name"] not in removed)
+
+    live = sorted(
+        {
+            item["tool"]["name"]
+            for item in api("GET", "/tools")["tools"]
+            if ((item.get("source") or {}).get("custom") or {}).get("namespace")
+            == manifest["namespace"]
+        }
+    )
+    result = {
+        "repository": manifest["repository"],
+        "sha": manifest["sha"],
+        "namespace": manifest["namespace"],
+        "registered": registered,
+        "removed": sorted(removed),
+        "live_on_start_page": live,
+    }
+    RESULT.parent.mkdir(parents=True, exist_ok=True)
+    RESULT.write_text(json.dumps(result, indent=2))
+    print(f"Registered {len(registered)} xwebmcp tools; {len(live)} live on the start page")
+    if not registered:
+        print("No xwebmcp tools are registered", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

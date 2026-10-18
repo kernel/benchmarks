@@ -1,0 +1,31 @@
+site = "alaskaair.com"
+start_url = "https://www.alaskaair.com/"
+
+# More constraints: two dates compared.
+[[tasks]]
+id = "alaska-cheaper-of-two-days"
+split = "train"
+instruction = "I can fly Alaska from Seattle (SEA) to San Francisco (SFO) on either {{day1}} or {{day2}}. Which day has the cheaper Main fare (not Saver) for 1 adult? Report the cheapest such flight on each day (flight number, departure time, price) and which day is cheaper."
+fixture = { day1 = { days_from_start = 21 }, day2 = { days_from_start = 22 } }
+
+# More results: every nonstop, two cabins.
+[[tasks]]
+id = "alaska-nonstops-main-and-first"
+split = "train"
+instruction = "List every nonstop Alaska flight from Seattle (SEA) to Anchorage (ANC) on {{date}}, with each one's departure time, Main fare and First Class fare for 1 adult."
+fixture = { date = { days_from_start = 25 } }
+
+# More results: every nonstop of the day.
+[[tasks]]
+id = "alaska-sea-las-nonstops"
+split = "validation"
+instruction = "List every nonstop Alaska flight from Seattle (SEA) to Las Vegas (LAS) on {{date}}, with each one's flight number, departure time and lowest fare for 1 adult, and say which is cheapest."
+fixture = { date = { days_from_start = 20 } }
+
+# Deeper flow: fare in the cart, read the cart.
+[[tasks]]
+id = "alaska-add-to-cart"
+split = "test"
+instruction = "Add the cheapest Main fare (not Saver) for 1 adult on a one-way Alaska flight from Portland (PDX) to Los Angeles (LAX) on {{date}} to the cart. Report the flight number(s), the fare, the taxes and fees, and the cart total."
+fixture = { date = { days_from_start = 23 } }
+actions = ["select_fare", "respond_fare_offer", "continue_checkout"]

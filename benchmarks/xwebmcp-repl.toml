@@ -1,0 +1,15 @@
+# The browser REPL with and without the site's kernel/xwebmcp tools, and
+# Playwright MCP for comparison, on everyday tasks on those sites. Runs the
+# held-out test split; pass --suite-arg split=train or split=validation when
+# improving the tools.
+suite = "xwebmcp-tasks"
+arms = [
+    "codex-repl",
+    "codex-repl-xwebmcp",
+    "codex-playwright-mcp",
+    "claude-haiku-repl",
+    "claude-haiku-repl-xwebmcp",
+]
+
+[suite_args]
+split = "test"

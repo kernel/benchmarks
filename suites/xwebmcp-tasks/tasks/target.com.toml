@@ -1,0 +1,27 @@
+site = "target.com"
+start_url = "https://www.target.com/"
+
+# More results: two pages of results.
+[[tasks]]
+id = "target-earbuds-two-pages"
+split = "train"
+instruction = "Search Target for \"wireless earbuds\" and go through the first two pages of results. Report how many products on those pages cost under $50, and the title, price and TCIN of the three highest-rated of them."
+
+# More constraints: sort plus filters.
+[[tasks]]
+id = "target-cheapest-paper-towels"
+split = "train"
+instruction = "Find the three cheapest paper towel products on Target that have at least 6 rolls and a rating of 4.5 stars or more. Report each one's title, roll count, price, rating and TCIN."
+
+# More results: a filtered result set, two pages.
+[[tasks]]
+id = "target-throw-pillows"
+split = "validation"
+instruction = "Search Target for \"throw pillow\", sorted by price low to high, and go through the first two pages. Report how many of those products are rated 4.5 stars or more, and the title, price and TCIN of the three cheapest that are."
+
+# Deeper flow: two items in the cart, a quantity changed, the cart read back.
+[[tasks]]
+id = "target-cart-two-items"
+split = "test"
+instruction = "Add a Stanley Quencher 40 oz tumbler (any color that can be shipped) and a pack of Pilot G2 pens to the Target cart for shipping, then change the pens to a quantity of 2. Report each cart line with its quantity and price, and the cart subtotal. Do not check out."
+actions = ["add_to_cart", "update_cart_item"]

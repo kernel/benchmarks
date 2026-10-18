@@ -10,7 +10,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildExperimentEvents, publishBenchmark } from "./publish-braintrust";
 import { renderMarkdown } from "./report";
-import { readBenchmarkArm, selectPrimaryReward, summarizeArm } from "./results";
+import {
+  type BenchmarkArm,
+  compareTasks,
+  medianSpeedup,
+  readBenchmarkArm,
+  selectPrimaryReward,
+  summarizeArm,
+} from "./results";
 import {
   assertSafeToPublish,
   collectSensitiveValues,
@@ -174,7 +181,131 @@ function completeArm() {
   return arm;
 }
 
+function selfReportedArm(name: string, agentSeconds: number[]): BenchmarkArm {
+  const arm = completeArm();
+  arm.name = name;
+  arm.trials = arm.trials.map((trial, index) => ({
+    ...trial,
+    arm: name,
+    taskName: index === 0 ? "find-fare" : "read-cart",
+    rewards: {
+      reward: index === 0 ? 1 : 0,
+      finalized: 1,
+      outcome_failed: 0,
+      outcome_website_error: index === 0 ? 0 : 1,
+      outcome_kernel_error: 0,
+      kernel_mcp_valid: 1,
+      webmcp_invoked: name === "treatment" ? 1 : 0,
+    },
+    phases: {
+      agentExecution: { durationMs: agentSeconds[index] * 1000 },
+    },
+  }));
+  return arm;
+}
+
 describe("Harbor result ingestion", () => {
+  test("reads suite task facts, the finalize outcome and xwebmcp tools", () => {
+    const root = fixture();
+    const verifier = join(root, "task-one__abc", "steps/run/verifier");
+    writeJson(join(verifier, "task.json"), {
+      site: "delta.com",
+      split: "train",
+    });
+    writeJson(join(verifier, "finalize.json"), { outcome: "website_error" });
+    writeJson(join(verifier, "xwebmcp-registration.json"), {
+      sha: "abc",
+      registered: ["search_flights"],
+    });
+    const trial = readBenchmarkArm({ name: "candidate", path: root }).trials[0];
+    expect(trial.task).toEqual({ site: "delta.com", split: "train" });
+    expect(trial.outcome).toBe("website_error");
+    expect(trial.xwebmcp).toEqual({
+      sha: "abc",
+      registered: ["search_flights"],
+    });
+    const row = buildExperimentEvents(
+      [readBenchmarkArm({ name: "candidate", path: root })],
+      "facts",
+    ).find((event) => event.span_attributes.type === "eval");
+    expect(row?.metadata).toMatchObject({
+      task: { site: "delta.com", split: "train" },
+      outcome: "website_error",
+    });
+  });
+
+  test("reports self-reported success, agent time and speedup per task", () => {
+    const control = selfReportedArm("control", [90, 300]);
+    const treatment = selfReportedArm("treatment", [30, 120]);
+    const summaries = [control, treatment].map(summarizeArm);
+    expect(summaries[1]).toMatchObject({
+      scoring: "reward",
+      lenient: 1,
+      finalized: 2,
+      failed: 0,
+      websiteErrors: 1,
+      kernelErrors: 0,
+      webmcpInvoked: 2,
+      webmcpChecked: 2,
+      medianAgentMs: 75_000,
+      medianSuccessAgentMs: 30_000,
+    });
+
+    const comparisons = compareTasks([control, treatment]);
+    expect(comparisons.map((comparison) => comparison.task)).toEqual([
+      "find-fare",
+      "read-cart",
+    ]);
+    expect(comparisons[0].arms.treatment).toEqual({
+      trials: 1,
+      successes: 1,
+      medianCalls: 1,
+      medianAgentMs: 30_000,
+      medianSuccessAgentMs: 30_000,
+    });
+    expect(medianSpeedup(comparisons, "control", "treatment")).toEqual({
+      speedup: 3,
+      tasks: 1,
+    });
+
+    const markdown = renderMarkdown(
+      "test",
+      summaries,
+      undefined,
+      {},
+      comparisons,
+    );
+    expect(markdown).toContain(
+      "| Success | Failed | Website error | Kernel error | No report |",
+    );
+    expect(markdown).toContain("| 1/2 | 0 | 1 | 0 | 0 |");
+    expect(markdown).not.toContain("Lenient");
+    expect(markdown).toContain("| find-fare | 1/1 | 90s | 1 | 1/1 | 30s | 1 |");
+    expect(markdown).toContain("median speedup 3.00×");
+  });
+
+  test("compares each -xwebmcp arm with its own control and counts browser calls", () => {
+    const arms = [
+      selfReportedArm("codex", [90, 300]),
+      selfReportedArm("codex-xwebmcp", [30, 120]),
+      selfReportedArm("haiku", [60, 300]),
+      selfReportedArm("haiku-xwebmcp", [60, 120]),
+    ];
+    arms[1].trials[0].metrics.browserCalls = 7;
+    const comparisons = compareTasks(arms);
+    expect(comparisons[0].arms["codex-xwebmcp"].medianCalls).toBe(7);
+    const markdown = renderMarkdown(
+      "test",
+      arms.map(summarizeArm),
+      undefined,
+      {},
+      comparisons,
+    );
+    expect(markdown).toContain("codex-xwebmcp vs codex: median speedup 3.00×");
+    expect(markdown).toContain("haiku-xwebmcp vs haiku: median speedup 1.00×");
+    expect(markdown).not.toContain("haiku vs codex");
+  });
+
   test("keeps infrastructure errors out of task-quality scores", () => {
     const arm = readBenchmarkArm({ name: "candidate", path: fixture() });
     expect(arm.trials).toHaveLength(2);

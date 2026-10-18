@@ -1,0 +1,12 @@
+#!/bin/sh
+# stdio MCP server for the agent: Playwright MCP connected over CDP to the
+# browser Harbor created for the trial, logging each tool call for
+# playwright-mcp-verify. Nothing may be written to stdout, which carries the
+# MCP protocol.
+set -eu
+
+mkdir -p /tmp/playwright-mcp
+exec mcp-call-log /var/log/playwright-mcp/calls.jsonl \
+  playwright-mcp \
+  --cdp-endpoint "$(cat /run/playwright-mcp/cdp-url)" \
+  --output-dir /tmp/playwright-mcp

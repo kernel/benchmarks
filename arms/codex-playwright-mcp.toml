@@ -1,0 +1,15 @@
+# Codex driving the browser through Playwright MCP instead of Kernel's browser
+# REPL, with the same stealth browser. Compare with codex-repl.
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+
+[agent_kwargs]
+disable_web_search = true
+
+[toolset_args]
+version = "0.0.83"
+
+[browser]
+config = { stealth = true }

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Write the trial browser's CDP URL to a file, then run the container's
+# command. Agents may not pass Harbor's environment on to MCP servers they
+# launch, so the server reads the URL from the file.
+set -eu
+
+state=/run/playwright-mcp
+logs=/var/log/playwright-mcp
+mkdir -p "$state" "$logs"
+printf '%s\n' "${KERNEL_CDP_WS_URL:-}" >"$state/cdp-url"
+printf '%s\n' "${KERNEL_SESSION_ID:-}" >"$state/session-id"
+# The agent may run as another user; its MCP server logs calls here.
+touch "$logs/calls.jsonl"
+chmod 0666 "$logs/calls.jsonl"
+
+exec "$@"

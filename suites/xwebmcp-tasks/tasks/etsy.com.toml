@@ -1,0 +1,27 @@
+site = "etsy.com"
+start_url = "https://www.etsy.com/"
+
+# More constraints: price, shop rating, free shipping.
+[[tasks]]
+id = "etsy-leather-keychain"
+split = "train"
+instruction = "Find three personalized leather keychains on Etsy that cost less than $20, ship free to the US, and come from shops rated 4.8 stars or more. Report each one's title, price, shop name and shop rating."
+
+# Deeper flow: listing with required options in the cart, then a quantity change.
+[[tasks]]
+id = "etsy-napkins-in-cart"
+split = "train"
+instruction = "Add one set of linen napkins to the Etsy cart, choosing any options the listing requires, then change its quantity to 2. Report the listing's title, the options you chose, the price per set and the cart total. Do not check out."
+actions = ["add_to_cart", "update_cart_item"]
+
+# More results: two pages, then a count.
+[[tasks]]
+id = "etsy-mug-two-pages"
+split = "validation"
+instruction = "Search Etsy for \"handmade ceramic mug\" and go through the first two pages of results, leaving out ads. Report how many listings cost under $30, and the title, price and shop of the three cheapest."
+
+# More results: two pages, sorted by price.
+[[tasks]]
+id = "etsy-felt-slippers-two-pages"
+split = "test"
+instruction = "Search Etsy for \"wool felt slippers\" and go through the first two pages of results, leaving out ads. Report the five cheapest listings with each one's title, price and shop name, and how many listings on those pages have free shipping."
