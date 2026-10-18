@@ -1,13 +1,17 @@
-"""Command line entry point: `bench prepare` and `bench run`."""
+"""Command line entry point: `bench prepare`, `bench run` and `bench smoke`."""
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import json
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from harness.definitions import load_arm
 from harness.run import prepare, run
+from harness.smoke import all_arms, distinct_harnesses, markdown, smoke_many
 
 
 def _split(value: str | None) -> list[str] | None:
@@ -62,7 +66,21 @@ def main(argv: list[str] | None = None) -> int:
     run_command.add_argument("--attempts", type=int, default=1, help="trials per task and arm")
     run_command.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
 
+    smoke_command = commands.add_parser(
+        "smoke", help="run arms' agents on a local Docker task with one stdio MCP tool"
+    )
+    smoke_command.add_argument(
+        "arms", nargs="*", help="arm names (default: one arm per distinct agent configuration)"
+    )
+    smoke_command.add_argument("--agent-version", help="override the agent_version of one arm")
+    smoke_command.add_argument("--jobs-dir", type=Path, default=Path("jobs"))
+    smoke_command.add_argument("--output", type=Path, help="also write the summaries as JSON")
+    smoke_command.add_argument("--markdown", type=Path, help="also write a summary table")
+
     args = parser.parse_args(argv)
+    if args.command == "smoke":
+        return _smoke(args)
+
     arms = _split(args.arms)
     tasks = _split(args.tasks)
     suite_args = _pairs(args.suite_arg)
@@ -93,3 +111,21 @@ def main(argv: list[str] | None = None) -> int:
     for arm, status in statuses.items():
         print(f"{arm}: harbor exited {status} -> {args.jobs_dir / f'{arm}-{args.run_id}'}")
     return max(statuses.values(), default=0)
+
+
+def _smoke(args: argparse.Namespace) -> int:
+    arms = [load_arm(name) for name in args.arms] if args.arms else distinct_harnesses(all_arms())
+    if args.agent_version:
+        if len(arms) != 1:
+            raise SystemExit("--agent-version needs exactly one arm")
+        arms = [dataclasses.replace(arms[0], agent_version=args.agent_version)]
+    run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    with tempfile.TemporaryDirectory() as work_dir:
+        summaries = smoke_many(arms, Path(work_dir), args.jobs_dir, run_id)
+    text = json.dumps(summaries, indent=2)
+    print(text)
+    if args.output:
+        args.output.write_text(text + "\n")
+    if args.markdown:
+        args.markdown.write_text(markdown(summaries))
+    return 0 if all(summary["ok"] for summary in summaries) else 1

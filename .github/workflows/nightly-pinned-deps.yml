@@ -1,0 +1,254 @@
+name: Nightly pinned dependency updates
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: nightly-pinned-dependency-updates
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: benchmarks
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
+        with:
+          version: "0.8.17"
+
+      - uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3 # v2.1.2
+        with:
+          bun-version: "1.3.3"
+
+      - name: Install Pi and web access
+        env:
+          PI_TELEMETRY: "0"
+        run: |
+          npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+          pi install npm:pi-web-access@latest
+          pi --version
+          pi list
+
+      # gh and git renew the installation token through the helper. `gh pr
+      # merge` refuses to merge unless every check on the head commit is green
+      # and `bench smoke` passes for every agent configuration at that commit.
+      - name: Configure renewable GitHub App authentication
+        env:
+          APP_ID: ${{ secrets.ADMIN_APP_ID }}
+          APP_INSTALLATION_ID: ${{ steps.app-token.outputs.installation-id }}
+          APP_PRIVATE_KEY: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+        run: |
+          auth_dir="$RUNNER_TEMP/github-app-auth"
+          bin_dir="$auth_dir/bin"
+          mkdir -p "$bin_dir"
+          chmod 700 "$auth_dir" "$bin_dir"
+
+          private_key_file="$auth_dir/private-key.pem"
+          token_helper="$auth_dir/github-app-installation-token.mjs"
+          printf '%s' "$APP_PRIVATE_KEY" > "$private_key_file"
+          cp "$GITHUB_WORKSPACE/.github/scripts/github-app-installation-token.mjs" "$token_helper"
+          chmod 600 "$private_key_file" "$token_helper"
+
+          real_gh="$(command -v gh)"
+          cat > "$bin_dir/gh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          token="$(node "$GITHUB_APP_TOKEN_HELPER")"
+          if [ "${1:-}" = "pr" ] && [ "${2:-}" = "checks" ]; then
+            exec env GH_TOKEN="$GITHUB_CHECKS_TOKEN" GITHUB_TOKEN="$GITHUB_CHECKS_TOKEN" "$GITHUB_REAL_GH" "$@"
+          fi
+          if [ "${1:-}" = "pr" ] && [ "${2:-}" = "merge" ]; then
+            pr_number="${3:-}"
+            if [ -z "$pr_number" ] || [[ "$pr_number" = -* ]]; then
+              echo "A pull request number is required for the merge gate" >&2
+              exit 1
+            fi
+            head_sha="$(env GH_TOKEN="$token" GITHUB_TOKEN="$token" "$GITHUB_REAL_GH" pr view "$pr_number" --json headRefOid --jq .headRefOid)"
+            check_runs="$(env GH_TOKEN="$GITHUB_CHECKS_TOKEN" GITHUB_TOKEN="$GITHUB_CHECKS_TOKEN" "$GITHUB_REAL_GH" api "repos/$GITHUB_REPOSITORY/commits/$head_sha/check-runs?filter=latest&per_page=100")"
+            for required in harness report; do
+              conclusion="$(jq -r --arg name "$required" '[.check_runs[] | select(.name == $name and .status == "completed")] | last | .conclusion // ""' <<<"$check_runs")"
+              if [ "$conclusion" != "success" ]; then
+                echo "CI check $required is not green for $head_sha (conclusion: ${conclusion:-missing})" >&2
+                exit 1
+              fi
+            done
+            incomplete_checks="$(jq -r '[.check_runs[] | select(.status != "completed")] | map(.name) | join(", ")' <<<"$check_runs")"
+            failed_checks="$(jq -r '[.check_runs[] | select(.status == "completed" and (.conclusion | IN("success", "neutral", "skipped") | not))] | map("\(.name)=\(.conclusion)") | join(", ")' <<<"$check_runs")"
+            if [ -n "$incomplete_checks" ] || [ -n "$failed_checks" ]; then
+              echo "Pull request checks are not green for $head_sha (incomplete: ${incomplete_checks:-none}; failed: ${failed_checks:-none})" >&2
+              exit 1
+            fi
+            commit_status="$(env GH_TOKEN="$GITHUB_CHECKS_TOKEN" GITHUB_TOKEN="$GITHUB_CHECKS_TOKEN" "$GITHUB_REAL_GH" api "repos/$GITHUB_REPOSITORY/commits/$head_sha/status")"
+            status_count="$(jq -r .total_count <<<"$commit_status")"
+            status_state="$(jq -r .state <<<"$commit_status")"
+            if [ "$status_count" -gt 0 ] && [ "$status_state" != "success" ]; then
+              echo "Commit statuses are not green for $head_sha (state: $status_state)" >&2
+              exit 1
+            fi
+            if ! smoke-harnesses "$head_sha"; then
+              echo "bench smoke failed for $head_sha; see $SMOKE_DIR/$head_sha" >&2
+              exit 1
+            fi
+          fi
+          exec env GH_TOKEN="$token" GITHUB_TOKEN="$token" "$GITHUB_REAL_GH" "$@"
+          EOF
+          cat > "$bin_dir/git-credential-github-app" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [ "${1:-}" = "get" ] || exit 0
+          protocol=""
+          host=""
+          while IFS='=' read -r key value; do
+            case "$key" in
+              protocol) protocol="$value" ;;
+              host) host="$value" ;;
+            esac
+          done
+          [ "$protocol" = "https" ] && [ "$host" = "github.com" ] || exit 0
+          printf 'username=x-access-token\n'
+          printf 'password=%s\n' "$(node "$GITHUB_APP_TOKEN_HELPER")"
+          EOF
+          # Runs `bench smoke` for every agent configuration in a clean
+          # worktree of the given commit. Results are kept per commit, so a
+          # pass is reused until the branch moves.
+          cat > "$bin_dir/smoke-harnesses" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [ -n "${1:-}" ]; then
+            git -C "$GITHUB_WORKSPACE" fetch -q origin "$1" 2>/dev/null || true
+          fi
+          sha="$(git -C "$GITHUB_WORKSPACE" rev-parse "${1:-HEAD}^{commit}")"
+          out="$SMOKE_DIR/$sha"
+          if [ -f "$out/passed" ]; then
+            cat "$out/summary.md"
+            exit 0
+          fi
+          rm -rf "$out"
+          mkdir -p "$out"
+          worktree="$RUNNER_TEMP/smoke-worktree"
+          git -C "$GITHUB_WORKSPACE" worktree remove --force "$worktree" 2>/dev/null || true
+          git -C "$GITHUB_WORKSPACE" worktree add --detach "$worktree" "$sha" >/dev/null
+          status=0
+          (
+            cd "$worktree"
+            uv sync --frozen --quiet
+            uv run bench smoke --jobs-dir "$out/jobs" --output "$out/summary.json" --markdown "$out/summary.md"
+          ) >"$out/smoke.log" 2>&1 || status=$?
+          git -C "$GITHUB_WORKSPACE" worktree remove --force "$worktree"
+          cat "$out/summary.md" 2>/dev/null || tail -50 "$out/smoke.log"
+          [ "$status" -eq 0 ] && touch "$out/passed"
+          exit "$status"
+          EOF
+          chmod 700 "$bin_dir/gh" "$bin_dir/git-credential-github-app" "$bin_dir/smoke-harnesses"
+
+          git config user.name "kernel-internal[bot]"
+          git config user.email "260533166+kernel-internal[bot]@users.noreply.github.com"
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --local --unset-all credential.helper || true
+          git config --local --unset-all credential.https://github.com.helper || true
+          git config --local credential.https://github.com.helper "$bin_dir/git-credential-github-app"
+
+          {
+            echo "GITHUB_APP_ID=$APP_ID"
+            echo "GITHUB_APP_INSTALLATION_ID=$APP_INSTALLATION_ID"
+            echo "GITHUB_APP_PRIVATE_KEY_FILE=$private_key_file"
+            echo "GITHUB_APP_REPOSITORY=benchmarks"
+            echo "GITHUB_APP_TOKEN_CACHE=$auth_dir/token.json"
+            echo "GITHUB_APP_TOKEN_HELPER=$token_helper"
+            echo "GITHUB_REAL_GH=$real_gh"
+            echo "OUTCOME_FILE=$RUNNER_TEMP/nightly-pinned-deps.outcome"
+            echo "SMOKE_DIR=$RUNNER_TEMP/smoke"
+          } >> "$GITHUB_ENV"
+          echo "$bin_dir" >> "$GITHUB_PATH"
+
+      - name: Update pinned dependencies
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_CHECKS_TOKEN: ${{ github.token }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GIT_TERMINAL_PROMPT: "0"
+          PI_PREFERRED_MODEL: ${{ vars.PI_PREFERRED_MODEL }}
+          PI_SKIP_VERSION_CHECK: "1"
+          PI_TELEMETRY: "0"
+        run: |
+          : "${OPENAI_API_KEY:?Set OPENAI_API_KEY for the Codex smoke test}"
+          : "${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY for the Claude Code smoke test}"
+          : "${PI_PREFERRED_MODEL:?Set the PI_PREFERRED_MODEL organization variable}"
+          rendered_prompt="$RUNNER_TEMP/nightly-pinned-deps-prompt.md"
+          envsubst '${GITHUB_REPOSITORY} ${OUTCOME_FILE} ${SMOKE_DIR}' \
+            < .github/workflows/nightly-pinned-deps-prompt.md \
+            > "$rendered_prompt"
+          pi --print --no-session --approve \
+            --model "$PI_PREFERRED_MODEL" --thinking max \
+            @"$rendered_prompt"
+
+      - name: Confirm the run produced an outcome
+        run: |
+          outcome="$(tr -d '\r\n' < "$OUTCOME_FILE" 2>/dev/null || true)"
+          case "$outcome" in
+            no-updates)
+              open_pr="$(gh pr list --head automation/nightly-pinned-deps --state open --json number --jq '.[0].number // ""')"
+              if [ -n "$open_pr" ]; then
+                echo "::error::Agent reported no updates while PR #$open_pr remains open"
+                exit 1
+              fi
+              echo "All pinned dependencies are current."
+              ;;
+            merged:*)
+              pr_number="${outcome#merged:}"
+              state="$(gh pr view "$pr_number" --json state --jq .state)"
+              if [ "$state" != "MERGED" ]; then
+                echo "::error::Agent reported $outcome, but PR #$pr_number is $state"
+                exit 1
+              fi
+              echo "Merged PR #$pr_number."
+              ;;
+            *)
+              echo "::error::Agent exited without recording no-updates or merged:<pr-number> in $OUTCOME_FILE"
+              exit 1
+              ;;
+          esac
+
+      - name: Smoke test summary
+        if: always()
+        run: |
+          [ -n "${SMOKE_DIR:-}" ] || exit 0
+          shopt -s nullglob
+          for summary in "$SMOKE_DIR"/*/summary.md; do
+            sha="$(basename "$(dirname "$summary")")"
+            { echo "### bench smoke at ${sha:0:12}"; echo; cat "$summary"; echo; } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Revoke renewable app token
+        if: always()
+        run: |
+          if [ -f "$GITHUB_APP_TOKEN_CACHE" ]; then
+            gh api --method DELETE /installation/token || true
+          fi
+          rm -rf "$RUNNER_TEMP/github-app-auth"
