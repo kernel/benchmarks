@@ -21,8 +21,11 @@ split = "validation"
 instruction = "Find three comedy shows in Los Angeles, CA on {{saturday}} or {{sunday}} that start at 7:00 PM or later. Report each one's name, date, start time and venue."
 fixture = { saturday = { days_from_start = 15 }, sunday = { days_from_start = 16 } }
 
-# More constraints: venue, dates, then prices for two of them.
+# More constraints: team, venue, dates, then prices for two of them. Home
+# games usually have resale tickets where MSG's concerts are often sold out.
+# The NHL regular season runs October to April; pick another team off-season.
 [[tasks]]
-id = "ticketmaster-msg-cheapest"
+id = "ticketmaster-rangers-cheapest"
 split = "test"
-instruction = "Find the next two concerts at Madison Square Garden in New York listed on Ticketmaster. For each, report its name, date and time, and the lowest All-In price per ticket for 2 tickets, and say which is cheaper. Do not select or hold any tickets."
+instruction = "Find the next two New York Rangers home games at Madison Square Garden on Ticketmaster on or after {{start}}, skipping any that are sold out. For each, report the opponent, the date and time, and the lowest All-In price per ticket for 2 tickets together that anyone can buy (not cardmember-only or presale offers), and say which game is cheaper. Do not select or hold any tickets."
+fixture = { start = { days_from_start = 3 } }

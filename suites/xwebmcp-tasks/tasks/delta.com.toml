@@ -23,10 +23,11 @@ instruction = "Put the cheapest Delta Main Cabin (not Basic) one-way fare for 1 
 fixture = { date = { days_from_start = 23 } }
 actions = ["select_fare", "select_fare_experience", "open_seat_map", "skip_seat_selection"]
 
-# Deeper flow: fare in the cart, read the price breakdown.
+# Deeper flow: fare in the cart, read the price breakdown. ATL-LGA has
+# hourly nonstops, so the evening window has several to choose from.
 [[tasks]]
-id = "delta-evening-trip-summary"
+id = "delta-atl-lga-evening-summary"
 split = "test"
-instruction = "Put the cheapest nonstop Delta Main Cabin (not Basic) one-way fare for 1 adult from Detroit (DTW) to Minneapolis (MSP) on {{date}} that departs after 5:00 PM in the cart, and stop on Trip Summary. Report the flight number, departure time, the base fare, the taxes and fees, and the amount due."
-fixture = { date = { days_from_start = 19 } }
+instruction = "Put the cheapest nonstop Delta Main Cabin (not Basic) one-way fare for 1 adult from Atlanta (ATL) to New York LaGuardia (LGA) on {{date}} that departs after 5:00 PM in the cart, skipping any fare marked sold out, and stop on Trip Summary. Report the flight number, departure time, the base fare, the taxes and fees, and the amount due."
+fixture = { date = { days_from_start = 31 } }
 actions = ["select_fare", "select_fare_experience"]
