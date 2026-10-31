@@ -203,6 +203,7 @@ function trialMetadata(trial: BenchmarkTrial): Record<string, unknown> {
     model: trial.model,
     kernelMcpSha: trial.kernelMcpSha,
     errorClass: trial.errorClass,
+    errorType: trial.errorType,
     rewards: trial.rewards,
     durationMs: trial.metrics.durationMs,
   };

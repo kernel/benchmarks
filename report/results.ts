@@ -42,6 +42,7 @@ export interface BenchmarkTrial {
   scores: Record<string, number>;
   error?: string;
   errorClass?: "infra";
+  errorType?: string;
   metrics: BenchmarkMetrics;
   phases: {
     environmentSetup?: BenchmarkPhase;
@@ -80,6 +81,7 @@ export interface ArmSummary {
   strict?: number;
   strictScored: number;
   infraErrors: number;
+  infraFailures: { errorType: string; taskName: string; count: number }[];
   retries: number;
   ungraded: number;
   complete: boolean;
@@ -258,6 +260,7 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
     Object.keys(rewards).length === 0
       ? steps.map((step) => object(step).exception_info).find(Boolean)
       : undefined;
+  const exceptionInfo = result.exception_info ?? stepException;
   const error = errorText(
     result.exception_info ??
       stepException ??
@@ -296,6 +299,10 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
     scores: trialScores(rewards, error !== undefined),
     error,
     errorClass: error === undefined ? undefined : "infra",
+    errorType:
+      error === undefined
+        ? undefined
+        : string(object(exceptionInfo).exception_type),
     metrics: {
       inputTokens: sumStepMetric(steps, "n_input_tokens"),
       cacheTokens: sumStepMetric(steps, "n_cache_tokens"),
@@ -444,6 +451,7 @@ export function summarizeArm(arm: BenchmarkArm): ArmSummary {
           ),
     strictScored: strict.length,
     infraErrors,
+    infraFailures: infraFailures(arm),
     retries: arm.nRetries,
     ungraded,
     complete: incompleteReasons.length === 0,
@@ -479,4 +487,22 @@ export function summarizeArm(arm: BenchmarkArm): ArmSummary {
           ? configurations[0]
           : `mixed: ${configurations.join(", ")}`,
   };
+}
+
+/** Count each arm's infrastructure failures by exception type and task. */
+export function infraFailures(
+  arm: BenchmarkArm,
+): { errorType: string; taskName: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const trial of arm.trials) {
+    if (trial.errorClass !== "infra") continue;
+    const key = JSON.stringify([trial.errorType ?? "unknown", trial.taskName]);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([key, count]) => {
+      const [errorType, taskName] = JSON.parse(key) as [string, string];
+      return { errorType, taskName, count };
+    })
+    .sort((a, b) => b.count - a.count || a.taskName.localeCompare(b.taskName));
 }

@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""Run a stdio MCP server and log every tools/call the agent makes to it.
+
+Usage: mcp-call-log <log.jsonl> <command> [args...]
+
+Messages pass through unchanged. Each completed call appends one line with the
+tool name, its arguments, when it started, how long it took and whether it
+failed. Agents wrap MCP calls differently (Codex can nest them in a code-mode
+cell), so this log, not the agent's trajectory, is the record of what reached
+the server.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import threading
+import time
+from datetime import UTC, datetime
+from typing import IO, Any
+
+
+def parse(line: bytes) -> dict[str, Any]:
+    try:
+        message = json.loads(line)
+    except ValueError:
+        return {}
+    return message if isinstance(message, dict) else {}
+
+
+def main() -> int:
+    log_path, command = sys.argv[1], sys.argv[2:]
+    try:
+        log: IO[str] | None = open(log_path, "a")  # noqa: SIM115
+    except OSError as error:
+        print(f"mcp-call-log: not logging calls: {error}", file=sys.stderr)
+        log = None
+    lock = threading.Lock()
+    pending: dict[Any, tuple[float, str, dict[str, Any]]] = {}
+    child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    assert child.stdin is not None and child.stdout is not None
+
+    def to_server() -> None:
+        for line in sys.stdin.buffer:
+            message = parse(line)
+            if message.get("method") == "tools/call" and "id" in message:
+                with lock:
+                    pending[message["id"]] = (
+                        time.monotonic(),
+                        datetime.now(UTC).isoformat(),
+                        message.get("params") or {},
+                    )
+            child.stdin.write(line)
+            child.stdin.flush()
+        child.stdin.close()
+
+    threading.Thread(target=to_server, daemon=True).start()
+    for line in child.stdout:
+        message = parse(line)
+        with lock:
+            call = pending.pop(message.get("id"), None) if message else None
+        if call is not None and log is not None:
+            started, started_at, params = call
+            result = message.get("result") or {}
+            entry = {
+                "tool": params.get("name"),
+                "arguments": params.get("arguments"),
+                "started_at": started_at,
+                "duration_ms": round((time.monotonic() - started) * 1000),
+                "is_error": "error" in message or result.get("isError") is True,
+            }
+            with lock:
+                log.write(json.dumps(entry) + "\n")
+                log.flush()
+        sys.stdout.buffer.write(line)
+        sys.stdout.buffer.flush()
+    return child.wait()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -10,7 +10,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildExperimentEvents, publishBenchmark } from "./publish-braintrust";
 import { renderMarkdown } from "./report";
-import { readBenchmarkArm, selectPrimaryReward, summarizeArm } from "./results";
+import {
+  infraFailures,
+  readBenchmarkArm,
+  selectPrimaryReward,
+  summarizeArm,
+} from "./results";
 import {
   assertSafeToPublish,
   collectSensitiveValues,
@@ -478,6 +483,39 @@ describe("Harbor result ingestion", () => {
       },
     ]);
     expect(infra).toContain("candidate had 1 infrastructure failure");
+
+    const proxy = renderMarkdown("test", [
+      {
+        ...summary,
+        infraFailures: [
+          { errorType: "ProxyCreationError", taskName: "task-two", count: 3 },
+        ],
+      },
+    ]);
+    expect(proxy).toContain(
+      "| candidate | ProxyCreationError | task-two | 3 |",
+    );
+  });
+
+  test("counts infrastructure failures by exception type and task", () => {
+    const root = fixture();
+    const failedPath = join(root, "task-two__def", "result.json");
+    const failed = JSON.parse(readFileSync(failedPath, "utf8")) as {
+      exception_info: unknown;
+    };
+    failed.exception_info = {
+      exception_type: "ProxyCreationError",
+      exception_message: "Could not create mobile proxy",
+    };
+    writeJson(failedPath, failed);
+
+    const arm = readBenchmarkArm({ name: "candidate", path: root });
+    expect(arm.trials.find((trial) => trial.error)?.errorType).toBe(
+      "ProxyCreationError",
+    );
+    expect(infraFailures(arm)).toEqual([
+      { errorType: "ProxyCreationError", taskName: "v2-task-two", count: 1 },
+    ]);
   });
 
   test("keeps full errors until redaction and clamps derived scores", () => {

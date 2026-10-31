@@ -5,8 +5,10 @@
    website the task runs on, if there is one.
 2. Kernel's config registry looks that site up and returns a recommended
    browser and proxy recipe, plus guidance for navigating the site.
-3. An LLM translates the proxy recipe into a Kernel proxy, which is created
-   once per distinct recipe and then reused by name.
+3. An LLM translates the proxy recipe into Kernel proxy settings. A recipe
+   that needs a proxy becomes `proxy_create`, the POST /proxies body, which
+   harness.environment creates for each trial and deletes when it ends, so
+   no two trials share a proxy's IP.
 4. The guidance becomes steering for the agent when `steering` is true.
 
 stdin:  {"task": {"config": str, "instruction": str}, "args": {"model": str, "steering": bool}}
@@ -15,7 +17,6 @@ stdout: {"browser": {...}, "steering": str | null, "provenance": {...}}
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import sys
@@ -94,23 +95,11 @@ def parse_proxy(answer: dict[str, Any]) -> dict[str, Any]:
     return {"mode": answer["mode"]}
 
 
-def proxy_settings(client: Kernel, model: str, recipe: dict[str, Any]) -> dict[str, Any]:
+def proxy_settings(model: str, recipe: dict[str, Any]) -> dict[str, Any]:
     proxy = ask(model, PROXY_PROMPT.format(recipe=json.dumps(recipe, indent=2)), parse_proxy)
-    if "create" not in proxy:
-        return proxy
-    body = proxy["create"]
-    digest = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
-    name = f"site-config-{body['type']}-{digest}"
-    for existing in client.proxies.list():
-        if existing.name == name:
-            return {"name": name}
-    try:
-        client.proxies.create(**body, name=name)
-    except Exception:
-        # Another task may have created the same proxy concurrently.
-        if not any(existing.name == name for existing in client.proxies.list()):
-            raise
-    return {"name": name}
+    if "create" in proxy:
+        return {"proxy_create": proxy["create"]}
+    return {"proxy": proxy}
 
 
 def main() -> int:
@@ -138,7 +127,7 @@ def main() -> int:
     )
     if recommendation.get("type") == "recommendation":
         output["browser"] = dict(recommendation["browser"])
-        output["browser"]["proxy"] = proxy_settings(client, model, recommendation["proxy"])
+        output["browser"].update(proxy_settings(model, recommendation["proxy"]))
     if args.get("steering", False):
         output["steering"] = lookup.get("guidance")
     json.dump(output, sys.stdout)
