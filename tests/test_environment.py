@@ -163,3 +163,24 @@ def test_a_persona_that_did_not_apply_fails_the_trial(tmp_path, monkeypatch):
 
     with pytest.raises(environment.ChromiumEnvError, match="macOS user agent"):
         asyncio.run(env._create_browser())
+
+
+def test_gpu_browsers_are_created_without_a_memory_request(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        KernelEnvironment,
+        "_browser_create_kwargs",
+        lambda self: {**self._browser_create_overrides, "memory": "8GiB"},
+    )
+    monkeypatch.setattr(
+        KernelEnvironment,
+        "__init__",
+        lambda self, environment_dir, **kwargs: setattr(
+            self, "_browser_create_overrides", kwargs["browser_create_overrides"]
+        ),
+    )
+    (tmp_path / "kernel-config.json").write_text(json.dumps({"gpu": True}))
+    assert KernelTaskEnvironment(environment_dir=tmp_path)._browser_create_kwargs() == {"gpu": True}
+    (tmp_path / "kernel-config.json").write_text(json.dumps({"gpu": False}))
+    assert (
+        KernelTaskEnvironment(environment_dir=tmp_path)._browser_create_kwargs()["memory"] == "8GiB"
+    )

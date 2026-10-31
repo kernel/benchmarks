@@ -129,6 +129,13 @@ class KernelTaskEnvironment(KernelEnvironment):
             self._browser_create_overrides["proxy_id"] = proxy.id
         await super().start(force_build)
 
+    def _browser_create_kwargs(self) -> dict[str, Any]:
+        kwargs = super()._browser_create_kwargs()
+        # GPU browsers have a fixed memory size and reject a memory request.
+        if kwargs.get("gpu"):
+            kwargs.pop("memory", None)
+        return kwargs
+
     async def _create_browser(self) -> Any:
         response = await super()._create_browser()
         if self._chromium_env:
