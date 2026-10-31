@@ -1,0 +1,99 @@
+# One guest add-to-cart task per site. Each starts on the site's home page,
+# where most bot protection first sees the browser, and walks home page ->
+# search -> product page -> cart, the path a shopping agent takes.
+
+[[tasks]]
+id = "amazon-aa-batteries"
+site = "amazon.com"
+start_url = "https://www.amazon.com/"
+item = "the Amazon Basics 48-pack of AA alkaline batteries"
+
+[[tasks]]
+id = "walmart-paper-towels"
+site = "walmart.com"
+start_url = "https://www.walmart.com/"
+item = "a pack of Bounty Select-a-Size paper towels"
+
+[[tasks]]
+id = "costco-microfiber-towels"
+site = "costco.com"
+start_url = "https://www.costco.com/"
+item = "the Kirkland Signature Ultra Plush microfiber towels, 36-count"
+
+[[tasks]]
+id = "lowes-stanley-kit"
+site = "lowes.com"
+start_url = "https://www.lowes.com/"
+item = "the Stanley 27-pack 0.375-in metal kit"
+
+[[tasks]]
+id = "staples-copy-paper"
+site = "staples.com"
+start_url = "https://www.staples.com/"
+item = "one 500-sheet ream of 8.5 x 11 in multipurpose copy paper"
+
+[[tasks]]
+id = "target-paper-towels"
+site = "target.com"
+start_url = "https://www.target.com/"
+item = "a pack of Make-A-Size paper towels that can be shipped"
+
+[[tasks]]
+id = "homedepot-desk"
+site = "homedepot.com"
+start_url = "https://www.homedepot.com/"
+item = "a computer desk under $150 that can be shipped"
+
+[[tasks]]
+id = "radwell-fuse"
+site = "radwell.com"
+start_url = "https://www.radwell.com/"
+item = "a 20 A, 32 V 3AG fuse"
+
+[[tasks]]
+id = "ebay-usb-c-cable"
+site = "ebay.com"
+start_url = "https://www.ebay.com/"
+item = "a USB-C charging cable from a Buy It Now listing under $15"
+
+[[tasks]]
+id = "harborfreight-utility-knife"
+site = "harborfreight.com"
+start_url = "https://www.harborfreight.com/"
+item = "a folding lock-back utility knife"
+
+[[tasks]]
+id = "dickssportinggoods-water-bottle"
+site = "dickssportinggoods.com"
+start_url = "https://www.dickssportinggoods.com/"
+item = "a HydroJug 32 oz sport bottle that can be shipped"
+
+[[tasks]]
+id = "mouser-usb-c-receptacle"
+site = "mouser.com"
+start_url = "https://www.mouser.com/"
+item = "one GCT USB4105-GF-A USB-C receptacle"
+
+[[tasks]]
+id = "newark-aa-batteries"
+site = "newark.com"
+start_url = "https://www.newark.com/"
+item = "a pack of AA alkaline batteries"
+
+[[tasks]]
+id = "zoro-nitrile-gloves"
+site = "zoro.com"
+start_url = "https://www.zoro.com/"
+item = "a box of disposable nitrile gloves, size large"
+
+[[tasks]]
+id = "guitarcenter-picks"
+site = "guitarcenter.com"
+start_url = "https://www.guitarcenter.com/"
+item = "a 12-pack of Fender 351 celluloid medium guitar picks"
+
+[[tasks]]
+id = "wbmason-sticky-notes"
+site = "wbmason.com"
+start_url = "https://www.wbmason.com/"
+item = "a pack of Post-it 3 x 3 in canary yellow sticky notes"
