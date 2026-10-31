@@ -1,0 +1,91 @@
+# Browser settings per site, measured by hand on 2026-10-29..31. Each entry is
+# merged over the arm's config. `proxy_create` gives every trial its own proxy;
+# `chromium_env` restarts Chromium with KERNEL_* launcher variables (a list is
+# one set per trial, picked at random); `steering` is added to the instruction.
+
+[macos_persona]
+KERNEL_MAC_PERSONA = "1"
+
+[[webgl_personas]]
+KERNEL_WEBGL_VENDOR = "Google Inc. (NVIDIA Corporation)"
+KERNEL_WEBGL_RENDERER = "ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 3060/PCIe/SSE2, OpenGL 4.5.0)"
+KERNEL_CANVAS_AA_OFFSET = "-2"
+
+[[webgl_personas]]
+KERNEL_WEBGL_VENDOR = "Google Inc. (AMD)"
+KERNEL_WEBGL_RENDERER = "ANGLE (AMD, AMD Custom GPU 0405 (radeonsi vangogh LLVM 15.0.7), OpenGL 4.6 (Core Profile) Mesa 23.2.1)"
+KERNEL_CANVAS_AA_OFFSET = "3"
+
+[sites."amazon.com"]
+browser = { stealth = true, gpu = true }
+proxy = "isp"
+persona = "macos"
+
+[sites."costco.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."dickssportinggoods.com"]
+browser = { stealth = true, gpu = true }
+proxy = "isp"
+persona = "macos"
+
+[sites."ebay.com"]
+browser = { stealth = true, gpu = true }
+proxy = "isp"
+
+[sites."guitarcenter.com"]
+# Measured passing only with Web Bot Auth signatures, which this project does not have.
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."harborfreight.com"]
+browser = { stealth = true, gpu = true }
+proxy = "isp"
+persona = "macos"
+
+[sites."homedepot.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."lowes.com"]
+browser = { stealth = false }
+proxy = "isp"
+
+[sites."mouser.com"]
+browser = { stealth = true }
+proxy = "residential"
+steering = "mouser.com may show a bot-check interstitial on a page load that clears by itself within about 12 seconds. Before treating a page as blocked, wait and recheck for real content for up to 30 seconds."
+
+[sites."newark.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."radwell.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."staples.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."target.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."walmart.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."wbmason.com"]
+# No measured working configuration. The recommended interim is US residential,
+# solving the challenge by hand, which a benchmark cannot do.
+browser = { stealth = true }
+proxy = "residential"
+steering = "wbmason.com may show a bot-check interstitial that clears by itself. Before treating a page as blocked, wait and recheck for real content for up to 30 seconds."
+
+[sites."zoro.com"]
+browser = { stealth = true, gpu = true }
+proxy = "residential"
+persona = "webgl"
+steering = "zoro.com may show a bot-check interstitial that clears by itself. Before treating a page as blocked, wait and recheck for real content for up to 30 seconds."
