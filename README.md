@@ -119,6 +119,21 @@ The Kernel MCP server on ClawBench.
 
 ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whether the agent called Kernel MCP's `execute_playwright_code` and used its assigned browser on every call, so a failed task can be told apart from a trial that never used the toolset.
 
+### `retail-cart`
+
+Guest add-to-cart flows on 16 retail and industrial-supply sites with heavy bot protection. Each task starts on the site's home page and asks the agent to search for one item, open its product page, add it to the cart without logging in, and report the cart.
+
+| Arm | Agent | Browser |
+|---|---|---|
+| `codex-repl` | Codex, `gpt-6-luna`, Kernel MCP's `browser_repl` only | `stealth: true` and no proxy, so each browser gets its own egress IP from the stealth proxy pool |
+| `codex-repl-site-config` | Same; `gpt-6-luna` also picks the site and proxy for the configurator | From Kernel's config registry per site, plus its guidance. Each trial gets its own proxy. |
+
+The agent ends each task by calling the `bench` MCP server's `finalize` tool with its evidence and an outcome: `success`, `failed`, `blocked` (bot protection stopped it), `website_error` or `kernel_error`. `reward` is 1 for a reported success, and `outcome_<name>` records the failure, so bot blocks are counted apart from the agent's own failures. A trial whose proxy cannot be created fails with `ProxyCreationError`, listed under infrastructure failures in the report. The verifier also saves the browser's final URL and title. Run several attempts per task to get a pass rate per site:
+
+```bash
+uv run bench run retail-cart --attempts 10
+```
+
 ## Extending
 
 ### Add an arm
