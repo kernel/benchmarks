@@ -126,12 +126,12 @@ Guest add-to-cart flows on 16 retail and industrial-supply sites with heavy bot 
 | Arm | Agent | Browser |
 |---|---|---|
 | `codex-repl` | Codex, `gpt-6-luna`, Kernel MCP's `browser_repl` only | Stealth |
-| `codex-repl-site-config` | Same | From Kernel's config registry per site, plus its guidance |
+| `codex-repl-site-config` | Same; `gpt-6-luna` also picks the site and proxy for the configurator | From Kernel's config registry per site, plus its guidance. Each trial gets its own proxy. |
 
-The agent ends each task by calling the `bench` MCP server's `finalize` tool with its evidence and an outcome: `success`, `failed`, `blocked` (bot protection stopped it), `website_error` or `kernel_error`. `reward` is 1 for a reported success, and `outcome_<name>` records the failure, so bot blocks are counted apart from the agent's own failures. The verifier also saves the browser's final URL and title. Run several attempts per task to get a pass rate per site:
+The agent ends each task by calling the `bench` MCP server's `finalize` tool with its evidence and an outcome: `success`, `failed`, `blocked` (bot protection stopped it), `website_error` or `kernel_error`. `reward` is 1 for a reported success, and `outcome_<name>` records the failure, so bot blocks are counted apart from the agent's own failures. A trial whose proxy cannot be created fails with `ProxyCreationError`, listed under infrastructure failures in the report. The verifier also saves the browser's final URL and title. Run several attempts per task to get a pass rate per site:
 
 ```bash
-uv run bench run retail-cart --arms codex-repl --attempts 3
+uv run bench run retail-cart --attempts 10
 ```
 
 ## Extending

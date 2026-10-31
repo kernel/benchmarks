@@ -16,7 +16,7 @@ on:
       attempts:
         description: Trials per task and arm
         required: false
-        default: "3"
+        default: "10"
         type: string
       concurrency:
         description: Concurrent trials per arm

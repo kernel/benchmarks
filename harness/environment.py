@@ -9,7 +9,9 @@ A `proxy_create` entry in the file is a POST /proxies body rather than a
 browser param. Each trial creates its own proxy from it before the browser,
 and deletes it after the browser, so no two trials share a proxy's IP. The
 proxy's name starts with `proxy_prefix(run_id)` when `BENCH_RUN_ID` is set,
-so `delete_run_proxies` can remove any a crashed trial left behind.
+so `delete_run_proxies` can remove any a crashed trial left behind. A
+trial whose proxy cannot be created fails with `ProxyCreationError`, so
+reports can count those trials apart from other infrastructure failures.
 """
 
 from __future__ import annotations
@@ -26,6 +28,10 @@ from kernel import AsyncKernel, Kernel
 CONFIG_FILE = "kernel-config.json"
 PROXY_CREATE = "proxy_create"
 RUN_ID_ENV = "BENCH_RUN_ID"
+
+
+class ProxyCreationError(RuntimeError):
+    """The trial's proxy could not be created, so no browser was started."""
 
 
 def proxy_prefix(run_id: str) -> str:
@@ -59,8 +65,13 @@ class KernelTaskEnvironment(KernelEnvironment):
         if self._proxy_create is not None:
             run_id = os.environ.get(RUN_ID_ENV) or "local"
             name = f"{proxy_prefix(run_id)}{uuid.uuid4().hex[:12]}"
-            async with AsyncKernel(api_key=self._api_key) as client:
-                proxy = await client.proxies.create(**self._proxy_create, name=name)
+            try:
+                async with AsyncKernel(api_key=self._api_key) as client:
+                    proxy = await client.proxies.create(**self._proxy_create, name=name)
+            except Exception as error:
+                raise ProxyCreationError(
+                    f"Could not create {self._proxy_create.get('type')} proxy: {error}"
+                ) from error
             self._proxy_id = proxy.id
             self._browser_create_overrides["proxy_id"] = proxy.id
         await super().start(force_build)

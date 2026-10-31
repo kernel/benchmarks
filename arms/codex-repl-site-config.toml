@@ -17,5 +17,5 @@ config = { stealth = true }
 configurator = "site-config"
 
 [browser.configurator_args]
-model = "anthropic/claude-haiku-5-5"
+model = "openai/gpt-6-luna"
 steering = true

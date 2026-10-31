@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+import pytest
 from harbor.environments.kernel import KernelEnvironment
 
 from harness import environment
@@ -89,3 +90,19 @@ def test_proxy_names_differ_between_trials(tmp_path, monkeypatch):
         asyncio.run(_environment(tmp_path, monkeypatch, calls).start(force_build=False))
     names = [body["name"] for kind, body in calls if kind == "create"]
     assert len(set(names)) == 2
+
+
+def test_a_proxy_that_cannot_be_created_fails_the_trial_with_proxy_creation_error(
+    tmp_path, monkeypatch
+):
+    calls = []
+    env = _environment(tmp_path, monkeypatch, calls)
+
+    async def refuse(self, **body):
+        raise ValueError("403")
+
+    monkeypatch.setattr(FakeProxies, "create", refuse)
+
+    with pytest.raises(environment.ProxyCreationError, match="isp proxy: 403"):
+        asyncio.run(env.start(force_build=False))
+    assert calls == []
