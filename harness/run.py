@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from typing import Any
 from harness import preflight
 from harness.configure import configure_tasks
 from harness.definitions import Arm, load_arm, load_benchmark, load_suite, load_toolset
+from harness.environment import RUN_ID_ENV, delete_run_proxies
 
 # Transient failures worth retrying as a whole trial: Kernel API hiccups and
 # slow agent installs. Image build and task setup failures are not retried.
@@ -94,7 +96,8 @@ def run(
     `jobs_dir/run-<run_id>.json` maps each arm to its Harbor job directory,
     browser configurations, and exit status. It is written before Harbor
     starts and updated as each arm finishes, so an interrupted run can still
-    be reported.
+    be reported. Proxies that trials created and could not delete are
+    removed once every arm has finished.
     """
     preflight.check_kernel_project()
     load_suite(load_benchmark(benchmark_name).suite).preflight()
@@ -114,6 +117,7 @@ def run(
     }
     manifest_path.write_text(json.dumps(manifest, indent=2))
 
+    env = {**os.environ, RUN_ID_ENV: run_id}
     processes = {}
     for item in prepared:
         job_name = f"{item.arm.name}-{run_id}"
@@ -122,10 +126,13 @@ def run(
                 harbor_command(item, jobs_dir, job_name, concurrency, attempts),
                 stdout=log,
                 stderr=subprocess.STDOUT,
+                env=env,
             )
     for name, process in processes.items():
         manifest[name]["status"] = process.wait()
         manifest_path.write_text(json.dumps(manifest, indent=2))
+    for name in delete_run_proxies(run_id):
+        print(f"Deleted leftover proxy {name}")
     return {name: entry["status"] for name, entry in manifest.items()}
 
 

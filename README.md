@@ -168,12 +168,12 @@ stdin:  {"task": {"config": "<task.toml>", "instruction": "<instruction>"}, "arg
 stdout: {"browser": {"stealth": true}, "steering": "advice for the agent" | null, "provenance": {...}}
 ```
 
-It never sees the verifier's files. `steering` is appended to the task instruction under "Site guidance". Each task's result is recorded in `jobs/run-<id>.json`. Configurators may be nondeterministic, e.g. when they call an LLM.
+`browser` may include `proxy_create`, a [`POST /proxies`](https://kernel.sh/docs/proxies/overview) body: each trial then gets its own proxy, deleted when the trial ends. It never sees the verifier's files. `steering` is appended to the task instruction under "Site guidance". Each task's result is recorded in `jobs/run-<id>.json`. Configurators may be nondeterministic, e.g. when they call an LLM.
 
 `site-config` works like this:
 1. A model names the task's primary website.
 2. The [config registry](https://kernel.sh/docs/config-registry) looks it up. The registry is Kernel's record of which browser and proxy settings have reached a site, and what its bot protection reacted to.
-3. A model translates the recommended proxy recipe into a Kernel proxy, which is created once and reused.
+3. A model translates the recommended proxy recipe into a Kernel proxy. Each trial creates its own proxy before its browser and deletes it afterwards, so trials never share an ISP IP; `bench run` deletes any a crashed trial left behind.
 4. With `steering = true`, the registry's guidance for the site is added to the instruction.
 
 ### Add a toolset
