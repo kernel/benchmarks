@@ -25,6 +25,7 @@ def test_generate_writes_a_harbor_task(tmp_path):
     assert [server["name"] for server in config["environment"]["mcp_servers"]] == ["bench"]
     instruction = (task_dir / "steps/run/instruction.md").read_text()
     assert "Kirkland Signature" in instruction
+    assert "Reach the item however works" in instruction
     assert "https://www.costco.com/" in instruction
     setup = (task_dir / "steps/run/workdir/setup.sh").read_text()
     assert 'open-start-url "https://www.costco.com/"' in setup
@@ -71,6 +72,9 @@ def test_finalize_records_the_first_report_only(tmp_path):
 def test_score_counts_a_block_apart_from_other_failures(tmp_path):
     verifier = tmp_path / "verifier"
     (tmp_path / "finalize.json").write_text(json.dumps({"outcome": "blocked"}))
+    (tmp_path / "task.json").write_text(
+        json.dumps({"id": "t", "cart_url": "https://example.com/cart", "cart_match": "x"})
+    )
     source = (
         (BENCH / "score")
         .read_text()
@@ -90,9 +94,29 @@ def test_score_counts_a_block_apart_from_other_failures(tmp_path):
     assert rewards == {
         "reward": 0.0,
         "finalized": 1.0,
+        "cart_verified": 0.0,
+        "cart_unverifiable": 1.0,
         "outcome_failed": 0.0,
         "outcome_blocked": 1.0,
         "outcome_website_error": 0.0,
         "outcome_kernel_error": 0.0,
     }
     assert "error" in json.loads((verifier / "final-page.json").read_text())
+    check = json.loads((verifier / "cart-check.json").read_text())
+    assert check["verified"] is False and check["unverifiable"] is True
+
+
+def test_cart_check_tells_a_bot_check_from_an_empty_cart(monkeypatch):
+    source = (BENCH / "score").read_text().replace('if __name__ == "__main__":', "if False:")
+    score = {}
+    exec(compile(source, "score", "exec"), score)
+    task = {"cart_url": "https://shop.test/cart", "cart_match": "gloves"}
+
+    def page(text, url="https://shop.test/cart"):
+        score["execute"] = lambda code, timeout: {"url": url, "title": "", "text": text}
+        return score["check_cart"](task, {"url": url})
+
+    assert page("Nitrile gloves, qty 1")["verified"] is True
+    assert page("Your cart is empty")["unverifiable"] is False
+    blocked = page("Please verify yourself to continue", "https://shop.test/splashui/captcha")
+    assert blocked["verified"] is False and blocked["unverifiable"] is True

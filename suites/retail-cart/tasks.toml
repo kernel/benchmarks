@@ -1,99 +1,132 @@
 # One guest add-to-cart task per site. Each starts on the site's home page,
-# where most bot protection first sees the browser, and walks home page ->
-# search -> product page -> cart, the path a shopping agent takes.
+# where most bot protection first sees the browser. The verifier opens
+# `cart_url` (or fetches `cart_api` from the page) and checks it lists the
+# item with `cart_match`, a case-insensitive regular expression.
 
 [[tasks]]
 id = "amazon-aa-batteries"
 site = "amazon.com"
 start_url = "https://www.amazon.com/"
 item = "the Amazon Basics 48-pack of AA alkaline batteries"
+cart_url = "https://www.amazon.com/gp/cart/view.html"
+cart_match = 'Amazon Basics.{0,100}\bAA\b'
 
 [[tasks]]
 id = "walmart-paper-towels"
 site = "walmart.com"
 start_url = "https://www.walmart.com/"
 item = "a pack of Bounty Select-a-Size paper towels"
+cart_url = "https://www.walmart.com/cart"
+cart_match = 'Bounty'
 
 [[tasks]]
 id = "costco-microfiber-towels"
 site = "costco.com"
 start_url = "https://www.costco.com/"
 item = "the Kirkland Signature Ultra Plush microfiber towels, 36-count"
+cart_url = "https://www.costco.com/CheckoutCartDisplayView"
+cart_match = 'Ultra Plush'
 
 [[tasks]]
-id = "lowes-stanley-kit"
+id = "lowes-metal-kit"
 site = "lowes.com"
 start_url = "https://www.lowes.com/"
-item = "the Stanley 27-pack 0.375-in metal kit"
+item = "the 27-pack 0.375-in metal kit (sold under the Bostitch or Stanley brand)"
+cart_url = "https://www.lowes.com/cart"
+cart_match = '27.{0,4}Pack.{0,30}Metal Kit'
 
 [[tasks]]
 id = "staples-copy-paper"
 site = "staples.com"
 start_url = "https://www.staples.com/"
 item = "one 500-sheet ream of 8.5 x 11 in multipurpose copy paper"
+cart_url = "https://www.staples.com/cc/sparq/cart"
+cart_match = '(copy|multipurpose).{0,60}paper'
 
 [[tasks]]
 id = "target-paper-towels"
 site = "target.com"
 start_url = "https://www.target.com/"
 item = "a pack of Make-A-Size paper towels that can be shipped"
+cart_url = "https://www.target.com/cart"
+cart_match = 'paper towel'
 
 [[tasks]]
 id = "homedepot-desk"
 site = "homedepot.com"
 start_url = "https://www.homedepot.com/"
 item = "a computer desk under $150 that can be shipped"
+cart_url = "https://www.homedepot.com/cart"
+cart_match = '\bdesk'
 
 [[tasks]]
 id = "radwell-fuse"
 site = "radwell.com"
 start_url = "https://www.radwell.com/"
 item = "a 20 A, 32 V 3AG fuse"
+cart_url = "https://www.radwell.com/Cart"
+cart_match = 'fuse'
 
 [[tasks]]
 id = "ebay-usb-c-cable"
 site = "ebay.com"
 start_url = "https://www.ebay.com/"
 item = "a USB-C charging cable from a Buy It Now listing under $15"
+cart_url = "https://cart.ebay.com/"
+cart_match = 'usb.?c'
 
 [[tasks]]
 id = "harborfreight-utility-knife"
 site = "harborfreight.com"
 start_url = "https://www.harborfreight.com/"
 item = "a folding lock-back utility knife"
+cart_url = "https://www.harborfreight.com/checkout/cart"
+cart_match = 'utility knife|lock.?back'
 
 [[tasks]]
 id = "dickssportinggoods-water-bottle"
 site = "dickssportinggoods.com"
 start_url = "https://www.dickssportinggoods.com/"
 item = "a HydroJug 32 oz sport bottle that can be shipped"
+cart_url = "https://www.dickssportinggoods.com/OrderItemDisplay"
+cart_match = 'HydroJug'
 
 [[tasks]]
 id = "mouser-usb-c-receptacle"
 site = "mouser.com"
 start_url = "https://www.mouser.com/"
 item = "one GCT USB4105-GF-A USB-C receptacle"
+cart_url = "https://www.mouser.com/en/Cart/"
+cart_match = 'USB4105'
 
 [[tasks]]
 id = "newark-aa-batteries"
 site = "newark.com"
 start_url = "https://www.newark.com/"
 item = "a pack of AA alkaline batteries"
+cart_url = "https://www.newark.com/webapp/wcs/stores/servlet/OrderItemDisplay?storeId=10194&catalogId=15003&langId=-1"
+cart_match = 'alkaline'
 
 [[tasks]]
 id = "zoro-nitrile-gloves"
 site = "zoro.com"
 start_url = "https://www.zoro.com/"
 item = "a box of disposable nitrile gloves, size large"
+cart_url = "https://www.zoro.com/cart"
+cart_match = 'nitrile'
 
 [[tasks]]
 id = "guitarcenter-picks"
 site = "guitarcenter.com"
 start_url = "https://www.guitarcenter.com/"
 item = "a 12-pack of Fender 351 celluloid medium guitar picks"
+cart_api = "https://www.guitarcenter.com/rest/model/atg/commerce/ShoppingCartActor/cartRedesignNew?saveForLaterPage=1&SPA=true"
+cart_match = '\b351\b'
 
 [[tasks]]
 id = "wbmason-sticky-notes"
 site = "wbmason.com"
 start_url = "https://www.wbmason.com/"
 item = "a pack of Post-it 3 x 3 in canary yellow sticky notes"
+cart_url = "https://www.wbmason.com/shopping-cart"
+cart_match = 'Post-it|sticky note'

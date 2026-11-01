@@ -1,0 +1,109 @@
+# Browser settings per site, measured by hand on 2026-10-29 to 2026-11-01.
+# Each entry is merged over the arm's config. `proxy` gives every trial its own
+# proxy of that type; `persona = "macos"` restarts Chromium with the macOS
+# persona's launcher variables; `vm_setup` commands run as root in the
+# browser's VM before the first page load; `steering` is added to the
+# instruction.
+
+[macos_persona]
+KERNEL_MAC_PERSONA = "1"
+
+[sites."amazon.com"]
+browser = { stealth = true, gpu = true }
+proxy = "isp"
+persona = "macos"
+
+[sites."costco.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."dickssportinggoods.com"]
+browser = { stealth = true, gpu = true }
+proxy = "isp"
+persona = "macos"
+
+[sites."ebay.com"]
+browser = { stealth = true, gpu = true }
+proxy = "isp"
+
+[sites."guitarcenter.com"]
+# Measured passing only with Web Bot Auth signatures, which this project does not have.
+browser = { stealth = true }
+proxy = "isp"
+steering = """
+guitarcenter.com denies its home page (/), /search and /cart to automated browsers with an "Access Denied" page, but search results at /search/ with a trailing slash, product pages and /cart/index load. Search by opening https://www.guitarcenter.com/search/?Ntt=<words joined with +>, open the product, and click Add to Cart. Show the cart at https://www.guitarcenter.com/cart/index; if it does not list the item, report the add-to-cart confirmation the product page showed.
+"""
+
+[sites."harborfreight.com"]
+browser = { stealth = true, gpu = true }
+proxy = "isp"
+persona = "macos"
+
+[sites."homedepot.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."lowes.com"]
+browser = { stealth = false }
+proxy = "isp"
+
+[sites."mouser.com"]
+browser = { stealth = true }
+proxy = "residential"
+steering = """
+mouser.com denies its search results, category and product pages (/c/..., /ProductDetail/...) to automated browsers, so do not press Enter in the search box. Find the part number instead: type the item into the search box and read the suggestions without submitting, or search the web (for example DuckDuckGo) for "mouser <item>" and take the part number from the results. Then open https://www.mouser.com/en/Cart/, enter the manufacturer or Mouser part number and a quantity in its add-by-part-number row, and click Add.
+
+Pages may show a bot-check interstitial that clears by itself within about 12 seconds. Wait up to 30 seconds before treating a page as blocked.
+"""
+
+[sites."newark.com"]
+browser = { stealth = true }
+proxy = "isp"
+steering = """
+newark.com denies its search results, category and product pages (/search, /c/..., /dp/...) to automated browsers, so pressing Enter in the search box does nothing. The site's older store pages still work; use them:
+
+1. Type the item into the search box and read the suggestions without submitting, or open https://www.newark.com/webapp/wcs/stores/servlet/AjaxSearchLookAhead?searchTerm=<words>&storeId=10194&catalogId=15003&langId=-1. Suggestions link to /dp/<order code>; note the order code of a matching product.
+2. Open https://www.newark.com/webapp/wcs/stores/servlet/ProductDisplay?storeId=10194&catalogId=15003&langId=-1&partNumber=<order code>.
+3. Clicking its Add to Cart link does nothing; navigate to the link's href instead.
+4. Show the cart at https://www.newark.com/webapp/wcs/stores/servlet/OrderItemDisplay?storeId=10194&catalogId=15003&langId=-1. The /cart page stays empty.
+"""
+
+[sites."radwell.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."staples.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."target.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."walmart.com"]
+browser = { stealth = true }
+proxy = "isp"
+
+[sites."wbmason.com"]
+# The captcha-solver extension takes over the site's Cloudflare Turnstile check
+# and never completes it, so its Turnstile interceptor is emptied before the
+# first page load.
+browser = { stealth = true }
+proxy = "residential"
+vm_setup = ["printf '/* disabled */\\n' > /home/kernel/extensions/kernel/capmonster/interceptors/turnstileInterceptor.js"]
+steering = """
+wbmason.com shows a "Verify Access to Continue" page with a Cloudflare Turnstile check before the site. Do not reload or navigate while it is showing: that turns it into a hard block. Wait up to 30 seconds for it to pass by itself; if a checkbox appears, click it once with computer_action.
+
+On this site use computer_action for clicks and typing: scripted clicks and typing in the search box do not take effect.
+"""
+
+[sites."zoro.com"]
+# A fresh residential IP per trial and one reload passed 5/5 by hand; GPU and
+# the WebGL persona made no difference there and got a slider every time in
+# the benchmark.
+browser = { stealth = true }
+proxy = "residential"
+steering = """
+On zoro.com the first page load is often refused with a 403 or a bot-check page. That refusal sets a cookie, and loading the same URL once more usually shows the real site, so if the first load is blocked, load it again once. If the page says "Access is temporarily restricted", reloading will not help: report the task as blocked.
+"""
+

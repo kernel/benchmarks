@@ -1,5 +1,5 @@
 # Guest add-to-cart flows on bot-protected retail and industrial-supply sites,
 # driven through the browser REPL, with a stealth browser and with the config
-# registry's per-site settings.
+# registry's per-site settings, and with a fixed per-site table.
 suite = "retail-cart"
-arms = ["codex-repl", "codex-repl-site-config"]
+arms = ["codex-repl", "codex-repl-site-config", "codex-repl-pinned"]

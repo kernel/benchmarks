@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""Choose browser settings from the fixed per-site table in sites.toml.
+
+The task's site comes from `metadata.site` in its task.toml. Proxies are US
+ISP or US residential, created per trial. A `persona` of `macos` restarts
+Chromium with the macOS persona's launcher variables. `vm_setup` commands run as root
+in the browser's VM before the first page load.
+
+stdin:  {"task": {"config": str, "instruction": str}, "args": {}}
+stdout: {"browser": {...}, "steering": str | null, "provenance": {...}}
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import tomllib
+from pathlib import Path
+
+TABLE = tomllib.loads((Path(__file__).parent / "sites.toml").read_text())
+
+
+def main() -> int:
+    task = json.load(sys.stdin)["task"]
+    site = tomllib.loads(task["config"]).get("metadata", {}).get("site")
+    entry = TABLE["sites"].get(site)
+    if entry is None:
+        raise SystemExit(f"No pinned configuration for site {site!r}")
+    browser = dict(entry["browser"])
+    browser["proxy_create"] = {"type": entry["proxy"], "config": {"country": "US"}}
+    persona = entry.get("persona")
+    if persona == "macos":
+        browser["chromium_env"] = TABLE["macos_persona"]
+    elif persona is not None:
+        raise SystemExit(f"Unknown persona {persona!r} for {site}")
+    if entry.get("vm_setup"):
+        browser["vm_setup"] = entry["vm_setup"]
+    json.dump(
+        {
+            "browser": browser,
+            "steering": entry.get("steering"),
+            "provenance": {"site": site, "proxy": entry["proxy"], "persona": persona},
+        },
+        sys.stdout,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

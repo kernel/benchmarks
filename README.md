@@ -121,14 +121,19 @@ ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whet
 
 ### `retail-cart`
 
-Guest add-to-cart flows on 16 retail and industrial-supply sites with heavy bot protection. Each task starts on the site's home page and asks the agent to search for one item, open its product page, add it to the cart without logging in, and report the cart.
+Guest add-to-cart tasks on 16 retail and industrial-supply sites with heavy bot protection. Each task starts on the site's home page and asks the agent to put one item in the site's cart as a guest, by whatever route works, and show the cart.
 
 | Arm | Agent | Browser |
 |---|---|---|
 | `codex-repl` | Codex, `gpt-6-luna`, Kernel MCP's `browser_repl` only | `stealth: true` and no proxy, so each browser gets its own egress IP from the stealth proxy pool |
 | `codex-repl-site-config` | Same; `gpt-6-luna` also picks the site and proxy for the configurator | From Kernel's config registry per site, plus its guidance. Each trial gets its own proxy. |
+| `codex-repl-pinned` | Same, plus Kernel MCP's `computer_action` | A fixed per-site table (`configurators/pinned/sites.toml`): stealth, GPU, a new US ISP or residential proxy per trial, a macOS persona or VM setup on some sites, and per-site guidance |
 
-The agent ends each task by calling the `bench` MCP server's `finalize` tool with its evidence and an outcome: `success`, `failed`, `blocked` (bot protection stopped it), `website_error` or `kernel_error`. `reward` is 1 for a reported success, and `outcome_<name>` records the failure, so bot blocks are counted apart from the agent's own failures. A trial whose proxy cannot be created fails with `ProxyCreationError`, listed under infrastructure failures in the report. The verifier also saves the browser's final URL and title. Run several attempts per task to get a pass rate per site:
+The agent ends each task by calling the `bench` MCP server's `finalize` tool with its evidence and an outcome: `success`, `failed`, `blocked` (bot protection stopped it), `website_error` or `kernel_error`. `reward` is 1 for a reported success, and `outcome_<name>` records the failure, so bot blocks are counted apart from the agent's own failures.
+
+The verifier then checks the cart itself. It reads the page the agent ended on if that is the cart, otherwise opens the task's `cart_url` or fetches its `cart_api`, and sets `cart_verified` when the item is listed. When it could not see the cart, because loading it failed or showed a bot check, it sets `cart_unverifiable` instead.
+
+Run several attempts per task to get a pass rate per site:
 
 ```bash
 uv run bench run retail-cart --attempts 10
