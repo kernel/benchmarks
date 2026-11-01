@@ -27,4 +27,5 @@ def test_personas_become_chromium_env():
     zoro = _configure("zoro.com")
     assert len(zoro["browser"]["chromium_env"]) == 2
     assert zoro["browser"]["proxy_create"]["type"] == "residential"
-    assert "30 seconds" in zoro["steering"]
+    assert "load it again once" in zoro["steering"]
+    assert _configure("wbmason.com")["browser"]["vm_setup"]
