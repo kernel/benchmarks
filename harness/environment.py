@@ -13,11 +13,13 @@ so `delete_run_proxies` can remove any a crashed trial left behind. A
 trial whose proxy cannot be created fails with `ProxyCreationError`, so
 reports can count those trials apart from other infrastructure failures.
 
-A `chromium_env` entry is a set of `KERNEL_*` launcher variables, or a list
-of sets of which each trial picks one at random. Chromium is restarted with
-them right after the browser is created, before the task container starts,
-and the page is checked for the persona or WebGL renderer they ask for. A
-trial where that fails fails with `ChromiumEnvError`.
+Two entries change the browser's VM right after it is created, before the
+task container starts and before the first page load. `chromium_env` is a set
+of `KERNEL_*` launcher variables, or a list of sets of which each trial picks
+one at random: Chromium is restarted with them and the page is checked for
+the persona or WebGL renderer they ask for. `vm_setup` is a list of shell
+commands then run as root. A trial where either fails fails with
+`VmSetupError`.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ from kernel import AsyncKernel, Kernel
 CONFIG_FILE = "kernel-config.json"
 PROXY_CREATE = "proxy_create"
 CHROMIUM_ENV = "chromium_env"
+VM_SETUP = "vm_setup"
 RUN_ID_ENV = "BENCH_RUN_ID"
 
 
@@ -44,8 +47,8 @@ class ProxyCreationError(RuntimeError):
     """The trial's proxy could not be created, so no browser was started."""
 
 
-class ChromiumEnvError(RuntimeError):
-    """Chromium could not be restarted with the trial's launcher variables."""
+class VmSetupError(RuntimeError):
+    """The browser's VM could not be set up for the trial before the first page load."""
 
 
 SUPERVISOR_PROGRAM = """[program:chromium]
@@ -103,6 +106,7 @@ class KernelTaskEnvironment(KernelEnvironment):
         self._proxy_create: dict[str, Any] | None = None
         self._proxy_id: str | None = None
         self._chromium_env: dict[str, str] | None = None
+        self._vm_setup: list[str] = []
         config_path = Path(environment_dir) / CONFIG_FILE
         if config_path.is_file():
             overrides = json.loads(config_path.read_text())
@@ -111,6 +115,7 @@ class KernelTaskEnvironment(KernelEnvironment):
             if isinstance(chromium_env, list):
                 chromium_env = random.choice(chromium_env)
             self._chromium_env = chromium_env
+            self._vm_setup = overrides.pop(VM_SETUP, None) or []
             kwargs["browser_create_overrides"] = overrides
         super().__init__(environment_dir, *args, **kwargs)
 
@@ -138,14 +143,22 @@ class KernelTaskEnvironment(KernelEnvironment):
 
     async def _create_browser(self) -> Any:
         response = await super()._create_browser()
-        if self._chromium_env:
-            try:
+        try:
+            if self._chromium_env:
                 await self._restart_chromium(response.session_id)
-            except Exception as error:
-                raise ChromiumEnvError(
-                    f"Could not restart Chromium with {sorted(self._chromium_env)}: {error}"
-                ) from error
+            for command in self._vm_setup:
+                await self._run_as_root(response.session_id, command)
+        except Exception as error:
+            raise VmSetupError(f"Could not set up the browser VM: {error}") from error
         return response
+
+    async def _run_as_root(self, session_id: str, command: str) -> None:
+        result = await self._client.browsers.process.exec(
+            session_id, command="bash", args=["-c", command], as_root=True, timeout_sec=60
+        )
+        if result.exit_code != 0:
+            raise RuntimeError(f"{command!r} exited {result.exit_code}")
+        self.logger.info(f"Ran in the browser VM: {command}")
 
     async def _restart_chromium(self, session_id: str) -> None:
         env = " ".join(

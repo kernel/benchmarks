@@ -9,7 +9,7 @@ toolset = "kernel-mcp-local"
 disable_web_search = true
 
 [toolset_args]
-toolsets = ["repl"]
+toolsets = ["repl", "computer"]
 
 [browser]
 config = { stealth = true }

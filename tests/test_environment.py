@@ -161,7 +161,7 @@ def test_a_persona_that_did_not_apply_fails_the_trial(tmp_path, monkeypatch):
     identity = {"userAgent": "X11; Linux x86_64", "renderer": "ANGLE (Mesa)"}
     env = _chromium_environment(tmp_path, monkeypatch, {"KERNEL_MAC_PERSONA": "1"}, identity, [])
 
-    with pytest.raises(environment.ChromiumEnvError, match="macOS user agent"):
+    with pytest.raises(environment.VmSetupError, match="macOS user agent"):
         asyncio.run(env._create_browser())
 
 
@@ -184,3 +184,14 @@ def test_gpu_browsers_are_created_without_a_memory_request(tmp_path, monkeypatch
     assert (
         KernelTaskEnvironment(environment_dir=tmp_path)._browser_create_kwargs()["memory"] == "8GiB"
     )
+
+
+def test_vm_setup_commands_run_as_root_after_the_browser_is_created(tmp_path, monkeypatch):
+    calls = []
+    env = _chromium_environment(tmp_path, monkeypatch, None, {}, calls)
+    (tmp_path / "kernel-config.json").write_text(json.dumps({"vm_setup": ["echo hi", "true"]}))
+    env = KernelTaskEnvironment(environment_dir=tmp_path)
+
+    asyncio.run(env._create_browser())
+
+    assert calls == [("exec", ["-c", "echo hi"], True), ("exec", ["-c", "true"], True)]

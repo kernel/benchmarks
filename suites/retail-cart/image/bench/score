@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn the agent's finalize report into the task's rewards.
+"""Turn the agent's finalize report into the task's rewards, and check the cart.
 
 `reward` is 1 when the agent reported success, and 0 for any other outcome or
 when it never called finalize. `finalized` records whether it called
@@ -7,14 +7,17 @@ finalize, and `outcome_<name>` which failure it reported, so bot blocks can be
 told apart from other website errors, Kernel errors and the agent's own
 failures.
 
-The browser's final URL and title are saved next to the report, so a reported
-success can be checked against the page the agent ended on.
+The browser's final URL and title are saved, then the verifier checks the
+cart itself: it opens the task's `cart_url`, or fetches its `cart_api` from
+the page the agent ended on, and sets `cart_verified` when the text matches
+`cart_match`. cart-check.json keeps what it saw.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import urllib.request
 from pathlib import Path
@@ -26,12 +29,31 @@ FAILURES = ("failed", "blocked", "website_error", "kernel_error")
 
 FINAL_PAGE = "return { url: page.url(), title: await page.title() };"
 
+CART_PAGE = """
+const response = await page.goto(%s, { waitUntil: "domcontentloaded", timeout: 45000 });
+await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+await page.waitForTimeout(3000);
+return {
+  url: page.url(),
+  status: response ? response.status() : null,
+  title: await page.title(),
+  text: await page.evaluate(() => (document.body ? document.body.innerText : "")),
+};
+"""
 
-def final_page() -> dict:
+CART_API = """
+return await page.evaluate(async (url) => {
+  const response = await fetch(url, { headers: { Accept: "application/json" }, credentials: "include" });
+  return { url, status: response.status, text: await response.text() };
+}, %s);
+"""
+
+
+def execute(code: str, timeout_sec: int) -> dict:
     base = (os.environ.get("KERNEL_BASE_URL") or "https://api.onkernel.com").rstrip("/")
     request = urllib.request.Request(
         f"{base}/browsers/{os.environ['KERNEL_SESSION_ID']}/playwright/execute",
-        data=json.dumps({"code": FINAL_PAGE, "timeout_sec": 30}).encode(),
+        data=json.dumps({"code": code, "timeout_sec": timeout_sec}).encode(),
         headers={
             "Authorization": f"Bearer {os.environ['KERNEL_API_KEY']}",
             "Content-Type": "application/json",
@@ -39,13 +61,30 @@ def final_page() -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=timeout_sec + 30) as response:
             result = json.load(response)
     except (OSError, ValueError, KeyError) as error:
         return {"error": str(error)}
     if not result.get("success"):
         return {"error": result.get("error")}
     return result.get("result") or {}
+
+
+def check_cart(task: dict) -> dict:
+    if task.get("cart_api"):
+        seen = execute(CART_API % json.dumps(task["cart_api"]), 60)
+    elif task.get("cart_url"):
+        seen = execute(CART_PAGE % json.dumps(task["cart_url"]), 90)
+    else:
+        return {"error": "task has no cart_url or cart_api"}
+    text = seen.pop("text", None) or ""
+    match = re.search(task["cart_match"], text, re.IGNORECASE) if task.get("cart_match") else None
+    seen["verified"] = match is not None
+    if match:
+        seen["excerpt"] = text[max(0, match.start() - 200) : match.end() + 200]
+    else:
+        seen["excerpt"] = text[:2000]
+    return seen
 
 
 def main() -> int:
@@ -56,13 +95,17 @@ def main() -> int:
         report = None
     if report is not None:
         shutil.copy2(REPORT, VERIFIER / "finalize.json")
-    if TASK.exists():
+    task = json.loads(TASK.read_text()) if TASK.exists() else {}
+    if task:
         shutil.copy2(TASK, VERIFIER / "task.json")
-    (VERIFIER / "final-page.json").write_text(json.dumps(final_page(), indent=2))
+    (VERIFIER / "final-page.json").write_text(json.dumps(execute(FINAL_PAGE, 30), indent=2))
+    cart = check_cart(task)
+    (VERIFIER / "cart-check.json").write_text(json.dumps(cart, indent=2))
     outcome = report.get("outcome") if report is not None else None
     rewards = {
         "reward": float(outcome == "success"),
         "finalized": float(report is not None),
+        "cart_verified": float(cart.get("verified") is True),
         **{f"outcome_{name}": float(outcome == name) for name in FAILURES},
     }
     (VERIFIER / "reward.json").write_text(json.dumps(rewards, indent=2))
