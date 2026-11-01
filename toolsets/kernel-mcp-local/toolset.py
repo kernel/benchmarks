@@ -35,6 +35,10 @@ TOOLS = {
         "browser_repl",
         "- `browser_repl` runs JavaScript in a persistent REPL attached to your browser. If you have not used it before, start with `repl.help()`.",
     ),
+    "computer": (
+        "computer_action",
+        "- `computer_action` moves the mouse, clicks, types, scrolls and takes screenshots at the operating-system level, as a person would. Use it when a site reacts to scripted clicks or typing, or when they do not take effect; take a screenshot first to find coordinates.",
+    ),
 }
 
 INSTRUCTION = """
