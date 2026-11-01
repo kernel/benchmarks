@@ -1,22 +1,12 @@
-# Browser settings per site, measured by hand on 2026-10-29..31. Each entry is
-# merged over the arm's config. `proxy` gives every trial its own proxy of that
-# type; `persona` restarts Chromium with KERNEL_* launcher variables (`webgl`
-# picks one set per trial at random); `vm_setup` commands run as root in the
+# Browser settings per site, measured by hand on 2026-10-29 to 2026-11-01.
+# Each entry is merged over the arm's config. `proxy` gives every trial its own
+# proxy of that type; `persona = "macos"` restarts Chromium with the macOS
+# persona's launcher variables; `vm_setup` commands run as root in the
 # browser's VM before the first page load; `steering` is added to the
 # instruction.
 
 [macos_persona]
 KERNEL_MAC_PERSONA = "1"
-
-[[webgl_personas]]
-KERNEL_WEBGL_VENDOR = "Google Inc. (NVIDIA Corporation)"
-KERNEL_WEBGL_RENDERER = "ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 3060/PCIe/SSE2, OpenGL 4.5.0)"
-KERNEL_CANVAS_AA_OFFSET = "-2"
-
-[[webgl_personas]]
-KERNEL_WEBGL_VENDOR = "Google Inc. (AMD)"
-KERNEL_WEBGL_RENDERER = "ANGLE (AMD, AMD Custom GPU 0405 (radeonsi vangogh LLVM 15.0.7), OpenGL 4.6 (Core Profile) Mesa 23.2.1)"
-KERNEL_CANVAS_AA_OFFSET = "3"
 
 [sites."amazon.com"]
 browser = { stealth = true, gpu = true }
@@ -108,9 +98,11 @@ On this site use computer_action for clicks and typing: scripted clicks and typi
 """
 
 [sites."zoro.com"]
-browser = { stealth = true, gpu = true }
+# A fresh residential IP per trial and one reload passed 5/5 by hand; GPU and
+# the WebGL persona made no difference there and got a slider every time in
+# the benchmark.
+browser = { stealth = true }
 proxy = "residential"
-persona = "webgl"
 steering = """
 On zoro.com the first page load is often refused with a 403 or a bot-check page. That refusal sets a cookie, and loading the same URL once more usually shows the real site, so if the first load is blocked, load it again once. If the page says "Access is temporarily restricted", reloading will not help: report the task as blocked.
 """

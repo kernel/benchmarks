@@ -28,12 +28,12 @@ cart_url = "https://www.costco.com/CheckoutCartDisplayView"
 cart_match = 'Ultra Plush'
 
 [[tasks]]
-id = "lowes-stanley-kit"
+id = "lowes-metal-kit"
 site = "lowes.com"
 start_url = "https://www.lowes.com/"
-item = "the Stanley 27-pack 0.375-in metal kit"
+item = "the 27-pack 0.375-in metal kit (sold under the Bostitch or Stanley brand)"
 cart_url = "https://www.lowes.com/cart"
-cart_match = 'Stanley'
+cart_match = '27.{0,4}Pack.{0,30}Metal Kit'
 
 [[tasks]]
 id = "staples-copy-paper"

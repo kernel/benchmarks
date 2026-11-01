@@ -2,9 +2,8 @@
 """Choose browser settings from the fixed per-site table in sites.toml.
 
 The task's site comes from `metadata.site` in its task.toml. Proxies are US
-ISP or US residential, created per trial. A `persona` of `macos` or `webgl`
-restarts Chromium with the matching launcher variables; `webgl` rotates
-through the listed WebGL personas per trial. `vm_setup` commands run as root
+ISP or US residential, created per trial. A `persona` of `macos` restarts
+Chromium with the macOS persona's launcher variables. `vm_setup` commands run as root
 in the browser's VM before the first page load.
 
 stdin:  {"task": {"config": str, "instruction": str}, "args": {}}
@@ -32,8 +31,6 @@ def main() -> int:
     persona = entry.get("persona")
     if persona == "macos":
         browser["chromium_env"] = TABLE["macos_persona"]
-    elif persona == "webgl":
-        browser["chromium_env"] = TABLE["webgl_personas"]
     elif persona is not None:
         raise SystemExit(f"Unknown persona {persona!r} for {site}")
     if entry.get("vm_setup"):

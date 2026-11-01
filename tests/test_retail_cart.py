@@ -95,10 +95,28 @@ def test_score_counts_a_block_apart_from_other_failures(tmp_path):
         "reward": 0.0,
         "finalized": 1.0,
         "cart_verified": 0.0,
+        "cart_unverifiable": 1.0,
         "outcome_failed": 0.0,
         "outcome_blocked": 1.0,
         "outcome_website_error": 0.0,
         "outcome_kernel_error": 0.0,
     }
     assert "error" in json.loads((verifier / "final-page.json").read_text())
-    assert json.loads((verifier / "cart-check.json").read_text())["verified"] is False
+    check = json.loads((verifier / "cart-check.json").read_text())
+    assert check["verified"] is False and check["unverifiable"] is True
+
+
+def test_cart_check_tells_a_bot_check_from_an_empty_cart(monkeypatch):
+    source = (BENCH / "score").read_text().replace('if __name__ == "__main__":', "if False:")
+    score = {}
+    exec(compile(source, "score", "exec"), score)
+    task = {"cart_url": "https://shop.test/cart", "cart_match": "gloves"}
+
+    def page(text, url="https://shop.test/cart"):
+        score["execute"] = lambda code, timeout: {"url": url, "title": "", "text": text}
+        return score["check_cart"](task, {"url": url})
+
+    assert page("Nitrile gloves, qty 1")["verified"] is True
+    assert page("Your cart is empty")["unverifiable"] is False
+    blocked = page("Please verify yourself to continue", "https://shop.test/splashui/captcha")
+    assert blocked["verified"] is False and blocked["unverifiable"] is True

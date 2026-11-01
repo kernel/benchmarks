@@ -8,9 +8,12 @@ told apart from other website errors, Kernel errors and the agent's own
 failures.
 
 The browser's final URL and title are saved, then the verifier checks the
-cart itself: it opens the task's `cart_url`, or fetches its `cart_api` from
-the page the agent ended on, and sets `cart_verified` when the text matches
-`cart_match`. cart-check.json keeps what it saw.
+cart itself: it reads the page the agent ended on when that is already the
+cart, otherwise opens the task's `cart_url`, or fetches its `cart_api` from
+the page, and sets `cart_verified` when the text matches `cart_match`. When
+the check could not see the cart, because loading it failed or showed a bot
+check, it sets `cart_unverifiable` instead, so a failed check is not counted
+as an empty cart. cart-check.json keeps what it saw.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -28,6 +32,21 @@ VERIFIER = Path("/logs/verifier")
 FAILURES = ("failed", "blocked", "website_error", "kernel_error")
 
 FINAL_PAGE = "return { url: page.url(), title: await page.title() };"
+
+# A bot check or access-denied page in place of the cart.
+CHALLENGE = re.compile(
+    r"captcha|/checkpoint/|validateCaptcha|verify (yourself|access|you are)|access denied"
+    r"|access is temporarily restricted|press (and|&) hold|are you a robot",
+    re.IGNORECASE,
+)
+
+CURRENT_PAGE = """
+return {
+  url: page.url(),
+  title: await page.title(),
+  text: await page.evaluate(() => (document.body ? document.body.innerText : "")),
+};
+"""
 
 CART_PAGE = """
 const response = await page.goto(%s, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -70,16 +89,28 @@ def execute(code: str, timeout_sec: int) -> dict:
     return result.get("result") or {}
 
 
-def check_cart(task: dict) -> dict:
+def same_page(url: str, other: str) -> bool:
+    a, b = urllib.parse.urlsplit(url), urllib.parse.urlsplit(other)
+    return (a.netloc, a.path.rstrip("/").lower()) == (b.netloc, b.path.rstrip("/").lower())
+
+
+def check_cart(task: dict, final_page: dict) -> dict:
     if task.get("cart_api"):
         seen = execute(CART_API % json.dumps(task["cart_api"]), 60)
     elif task.get("cart_url"):
-        seen = execute(CART_PAGE % json.dumps(task["cart_url"]), 90)
+        if same_page(final_page.get("url") or "", task["cart_url"]):
+            seen = execute(CURRENT_PAGE, 60)
+        else:
+            seen = execute(CART_PAGE % json.dumps(task["cart_url"]), 90)
     else:
-        return {"error": "task has no cart_url or cart_api"}
+        return {"verified": False, "unverifiable": True, "error": "task has no cart_url or cart_api"}
     text = seen.pop("text", None) or ""
     match = re.search(task["cart_match"], text, re.IGNORECASE) if task.get("cart_match") else None
     seen["verified"] = match is not None
+    challenge = CHALLENGE.search(f"{seen.get('url', '')} {seen.get('title', '')} {text[:3000]}")
+    seen["unverifiable"] = match is None and ("error" in seen or challenge is not None)
+    if challenge and match is None:
+        seen["challenge"] = challenge.group(0)
     if match:
         seen["excerpt"] = text[max(0, match.start() - 200) : match.end() + 200]
     else:
@@ -98,14 +129,16 @@ def main() -> int:
     task = json.loads(TASK.read_text()) if TASK.exists() else {}
     if task:
         shutil.copy2(TASK, VERIFIER / "task.json")
-    (VERIFIER / "final-page.json").write_text(json.dumps(execute(FINAL_PAGE, 30), indent=2))
-    cart = check_cart(task)
+    final_page = execute(FINAL_PAGE, 30)
+    (VERIFIER / "final-page.json").write_text(json.dumps(final_page, indent=2))
+    cart = check_cart(task, final_page)
     (VERIFIER / "cart-check.json").write_text(json.dumps(cart, indent=2))
     outcome = report.get("outcome") if report is not None else None
     rewards = {
         "reward": float(outcome == "success"),
         "finalized": float(report is not None),
         "cart_verified": float(cart.get("verified") is True),
+        "cart_unverifiable": float(cart.get("unverifiable") is True),
         **{f"outcome_{name}": float(outcome == name) for name in FAILURES},
     }
     (VERIFIER / "reward.json").write_text(json.dumps(rewards, indent=2))

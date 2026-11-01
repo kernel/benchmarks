@@ -25,7 +25,7 @@ def test_every_retail_cart_site_has_a_pinned_configuration():
 def test_personas_become_chromium_env():
     assert _configure("amazon.com")["browser"]["chromium_env"] == {"KERNEL_MAC_PERSONA": "1"}
     zoro = _configure("zoro.com")
-    assert len(zoro["browser"]["chromium_env"]) == 2
+    assert "chromium_env" not in zoro["browser"]
     assert zoro["browser"]["proxy_create"]["type"] == "residential"
     assert "load it again once" in zoro["steering"]
     assert _configure("wbmason.com")["browser"]["vm_setup"]
