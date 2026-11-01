@@ -72,7 +72,7 @@ uv run bench run kernel-mcp-clawbench \
 
 Harbor writes one job directory per arm under `jobs/`, containing rewards, trajectories, and verifier output. To summarize jobs, run `bun report/report.ts --arm <name>=<job dir>` (needs [Bun](https://bun.sh)).
 
-`--tasks` takes comma-separated task IDs or `all`. `--concurrency` sets concurrent trials per arm. `--toolset-ref` builds a toolset from a specific git ref, e.g. a Kernel MCP server branch.
+`--tasks` takes comma-separated task IDs or `all`. `--concurrency` sets concurrent trials per arm. `--attempts` runs each task that many times per arm. `--toolset-ref` builds a toolset from a specific git ref, e.g. a Kernel MCP server branch.
 
 The run also writes `jobs/run-<id>.json`, which maps each arm to its job directory, exit status, and the browser settings and site guidance each task got.
 
@@ -140,6 +140,8 @@ model = "anthropic/claude-haiku-5-5"
 steering = true
 ```
 
+`toolset_args` are passed to the toolset; `kernel-mcp-local` takes `toolsets`, the Kernel MCP toolsets to enable: `playwright` (the default), `repl`, `computer`, or several. `agent_kwargs` are passed to the Harbor agent.
+
 `config` takes any [`POST /browsers`](https://kernel.sh/docs/api-reference/browsers/create-a-browser-session) parameter, such as `stealth`, `proxy`, `region`, `extensions`, or `viewport`. Browsers are always headful.
 
 ### Add a configurator
@@ -151,12 +153,12 @@ stdin:  {"task": {"config": "<task.toml>", "instruction": "<instruction>"}, "arg
 stdout: {"browser": {"stealth": true}, "steering": "advice for the agent" | null, "provenance": {...}}
 ```
 
-It never sees the verifier's files. `steering` is appended to the task instruction under "Site guidance". Each task's result is recorded in `jobs/run-<id>.json`. Configurators may be nondeterministic, e.g. when they call an LLM.
+`browser` may include `proxy_create`, a [`POST /proxies`](https://kernel.sh/docs/proxies/overview) body: each trial then gets its own proxy, deleted when the trial ends. A trial whose proxy cannot be created fails with `ProxyCreationError`, which the report lists under infrastructure failures. `browser` may also include `chromium_env`, `KERNEL_*` Chromium launcher variables (or a list of sets, one picked per trial), and `vm_setup`, shell commands run as root in the browser's VM. Both are applied right after the browser is created, before the first page load; a trial where either fails fails with `VmSetupError`. The configurator never sees the verifier's files. `steering` is appended to the task instruction under "Site guidance". Each task's result is recorded in `jobs/run-<id>.json`. Configurators may be nondeterministic, e.g. when they call an LLM.
 
 `site-config` works like this:
 1. A model names the task's primary website.
 2. The [config registry](https://kernel.sh/docs/config-registry) looks it up. The registry is Kernel's record of which browser and proxy settings have reached a site, and what its bot protection reacted to.
-3. A model translates the recommended proxy recipe into a Kernel proxy, which is created once and reused.
+3. A model translates the recommended proxy recipe into a Kernel proxy. Each trial creates its own proxy before its browser and deletes it afterwards, so trials never share an ISP IP; `bench run` deletes any a crashed trial left behind.
 4. With `steering = true`, the registry's guidance for the site is added to the instruction.
 
 ### Add a toolset
