@@ -140,7 +140,7 @@ model = "anthropic/claude-haiku-5-5"
 steering = true
 ```
 
-`toolset_args` are passed to the toolset; `kernel-mcp-local` takes `toolsets`, the Kernel MCP toolsets to enable (`playwright`, the default, or `repl`). `agent_kwargs` are passed to the Harbor agent.
+`toolset_args` are passed to the toolset; `kernel-mcp-local` takes `toolsets`, the Kernel MCP toolsets to enable: `playwright` (the default), `repl`, `computer`, or several. `agent_kwargs` are passed to the Harbor agent.
 
 `config` takes any [`POST /browsers`](https://kernel.sh/docs/api-reference/browsers/create-a-browser-session) parameter, such as `stealth`, `proxy`, `region`, `extensions`, or `viewport`. Browsers are always headful.
 
@@ -153,7 +153,7 @@ stdin:  {"task": {"config": "<task.toml>", "instruction": "<instruction>"}, "arg
 stdout: {"browser": {"stealth": true}, "steering": "advice for the agent" | null, "provenance": {...}}
 ```
 
-`browser` may include `proxy_create`, a [`POST /proxies`](https://kernel.sh/docs/proxies/overview) body: each trial then gets its own proxy, deleted when the trial ends. A trial whose proxy cannot be created fails with `ProxyCreationError`, which the report lists under infrastructure failures. It never sees the verifier's files. `steering` is appended to the task instruction under "Site guidance". Each task's result is recorded in `jobs/run-<id>.json`. Configurators may be nondeterministic, e.g. when they call an LLM.
+`browser` may include `proxy_create`, a [`POST /proxies`](https://kernel.sh/docs/proxies/overview) body: each trial then gets its own proxy, deleted when the trial ends. A trial whose proxy cannot be created fails with `ProxyCreationError`, which the report lists under infrastructure failures. `browser` may also include `chromium_env`, `KERNEL_*` Chromium launcher variables (or a list of sets, one picked per trial), and `vm_setup`, shell commands run as root in the browser's VM. Both are applied right after the browser is created, before the first page load; a trial where either fails fails with `VmSetupError`. The configurator never sees the verifier's files. `steering` is appended to the task instruction under "Site guidance". Each task's result is recorded in `jobs/run-<id>.json`. Configurators may be nondeterministic, e.g. when they call an LLM.
 
 `site-config` works like this:
 1. A model names the task's primary website.

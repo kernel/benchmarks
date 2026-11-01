@@ -106,3 +106,92 @@ def test_a_proxy_that_cannot_be_created_fails_the_trial_with_proxy_creation_erro
     with pytest.raises(environment.ProxyCreationError, match="isp proxy: 403"):
         asyncio.run(env.start(force_build=False))
     assert calls == []
+
+
+class FakeBrowsers:
+    def __init__(self, calls, identity):
+        self.calls = calls
+        self.fs = type("Fs", (), {"write_file": self._write})()
+        self.process = type("Process", (), {"exec": self._exec})()
+        self.playwright = type("Playwright", (), {"execute": self._execute})()
+        self.identity = identity
+
+    async def _write(self, session_id, contents, path):
+        self.calls.append(("write", path, contents.decode()))
+
+    async def _exec(self, session_id, **kwargs):
+        self.calls.append(("exec", kwargs["args"], kwargs["as_root"]))
+        return type("Result", (), {"exit_code": 0})()
+
+    async def _execute(self, session_id, code):
+        return type("Result", (), {"success": True, "result": self.identity})()
+
+
+def _chromium_environment(tmp_path, monkeypatch, chromium_env, identity, calls):
+    async def create(self):
+        return type("Response", (), {"session_id": "s1"})()
+
+    def init(self, environment_dir, **kwargs):
+        self._client = type("Client", (), {"browsers": FakeBrowsers(calls, identity)})()
+        self.logger = type("Logger", (), {"info": lambda self, message: None})()
+
+    monkeypatch.setattr(KernelEnvironment, "__init__", init)
+    monkeypatch.setattr(KernelEnvironment, "_create_browser", create)
+    (tmp_path / "kernel-config.json").write_text(json.dumps({"chromium_env": chromium_env}))
+    return KernelTaskEnvironment(environment_dir=tmp_path)
+
+
+def test_chromium_restarts_with_the_trials_launcher_variables(tmp_path, monkeypatch):
+    calls = []
+    personas = [
+        {"KERNEL_WEBGL_RENDERER": "ANGLE (NVIDIA)", "KERNEL_CANVAS_AA_OFFSET": "-2"},
+        {"KERNEL_WEBGL_RENDERER": "ANGLE (NVIDIA)", "KERNEL_CANVAS_AA_OFFSET": "3"},
+    ]
+    identity = {"userAgent": "X11; Linux", "renderer": "ANGLE (NVIDIA)"}
+    env = _chromium_environment(tmp_path, monkeypatch, personas, identity, calls)
+
+    asyncio.run(env._create_browser())
+
+    program = next(contents for kind, path, *contents in calls if path.endswith(".conf"))
+    assert "KERNEL_WEBGL_RENDERER='ANGLE (NVIDIA)'" in program[0]
+    assert ("exec", ["/tmp/bench-restart-chromium.sh"], True) in calls
+
+
+def test_a_persona_that_did_not_apply_fails_the_trial(tmp_path, monkeypatch):
+    identity = {"userAgent": "X11; Linux x86_64", "renderer": "ANGLE (Mesa)"}
+    env = _chromium_environment(tmp_path, monkeypatch, {"KERNEL_MAC_PERSONA": "1"}, identity, [])
+
+    with pytest.raises(environment.VmSetupError, match="macOS user agent"):
+        asyncio.run(env._create_browser())
+
+
+def test_gpu_browsers_are_created_without_a_memory_request(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        KernelEnvironment,
+        "_browser_create_kwargs",
+        lambda self: {**self._browser_create_overrides, "memory": "8GiB"},
+    )
+    monkeypatch.setattr(
+        KernelEnvironment,
+        "__init__",
+        lambda self, environment_dir, **kwargs: setattr(
+            self, "_browser_create_overrides", kwargs["browser_create_overrides"]
+        ),
+    )
+    (tmp_path / "kernel-config.json").write_text(json.dumps({"gpu": True}))
+    assert KernelTaskEnvironment(environment_dir=tmp_path)._browser_create_kwargs() == {"gpu": True}
+    (tmp_path / "kernel-config.json").write_text(json.dumps({"gpu": False}))
+    assert (
+        KernelTaskEnvironment(environment_dir=tmp_path)._browser_create_kwargs()["memory"] == "8GiB"
+    )
+
+
+def test_vm_setup_commands_run_as_root_after_the_browser_is_created(tmp_path, monkeypatch):
+    calls = []
+    env = _chromium_environment(tmp_path, monkeypatch, None, {}, calls)
+    (tmp_path / "kernel-config.json").write_text(json.dumps({"vm_setup": ["echo hi", "true"]}))
+    env = KernelTaskEnvironment(environment_dir=tmp_path)
+
+    asyncio.run(env._create_browser())
+
+    assert calls == [("exec", ["-c", "echo hi"], True), ("exec", ["-c", "true"], True)]
