@@ -65,6 +65,12 @@ jobs:
       CLAWBENCH_JUDGE_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       CLAWBENCH_JUDGE_MODEL: deepseek/deepseek-v4-pro
       CLAWBENCH_JUDGE_API_TYPE: openai-completions
+      # Other browser providers, for remote-browser arms.
+      BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
+      BROWSERBASE_PROJECT_ID: ${{ secrets.BROWSERBASE_PROJECT_ID }}
+      STEEL_API_KEY: ${{ secrets.STEEL_API_KEY }}
+      HYPERBROWSER_API_KEY: ${{ secrets.HYPERBROWSER_API_KEY }}
+      ANCHOR_API_KEY: ${{ secrets.ANCHOR_API_KEY }}
       BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
       BRAINTRUST_PROJECT: ${{ vars.BRAINTRUST_PROJECT }}
     steps:

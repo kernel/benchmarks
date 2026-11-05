@@ -11,6 +11,11 @@ from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+# Harbor environment each arm `environment` runs its trials in.
+ENVIRONMENTS = {
+    "kernel": "harness.environment:KernelTaskEnvironment",
+    "remote-browser": "harness.environment:RemoteBrowserEnvironment",
+}
 
 
 @dataclass(frozen=True)
@@ -26,6 +31,9 @@ class Arm:
     agent: str
     model: str
     toolset: str
+    # "kernel" runs the task container in the Kernel browser's VM;
+    # "remote-browser" runs it on local Docker and drives the browser over CDP.
+    environment: str = "kernel"
     agent_version: str | None = None
     agent_kwargs: dict[str, Any] = field(default_factory=dict)
     browser: Browser = field(default_factory=Browser)
@@ -59,7 +67,10 @@ def load_benchmark(name: str) -> Benchmark:
 def load_arm(name: str) -> Arm:
     data = _read(ROOT / "arms" / f"{name}.toml")
     browser = data.pop("browser", {})
-    return Arm(name=name, browser=Browser(**browser), **data)
+    arm = Arm(name=name, browser=Browser(**browser), **data)
+    if arm.environment not in ENVIRONMENTS:
+        raise SystemExit(f"Arm {name} has unknown environment {arm.environment!r}")
+    return arm
 
 
 def load_suite(name: str) -> ModuleType:

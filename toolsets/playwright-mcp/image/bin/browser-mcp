@@ -1,0 +1,6 @@
+#!/bin/sh
+# Playwright MCP attached over CDP to the trial's remote browser, whose URL the
+# environment writes to a file before the agent starts.
+set -eu
+exec playwright-mcp --cdp-endpoint "$(cat /run/browser/cdp-url)" \
+  --cdp-timeout 60000 --output-dir /tmp/playwright-mcp "$@"

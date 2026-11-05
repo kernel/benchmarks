@@ -20,6 +20,11 @@ one at random: Chromium is restarted with them and the page is checked for
 the persona or WebGL renderer they ask for. `vm_setup` is a list of shell
 commands then run as root. A trial where either fails fails with
 `VmSetupError`.
+
+`RemoteBrowserEnvironment` instead runs the task container on local Docker
+and drives a browser from any provider in `harness.providers` over CDP, so
+providers are compared with the same agent, tools and container. Its config
+file names the `provider` and that provider's session create `params`.
 """
 
 from __future__ import annotations
@@ -33,14 +38,20 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from harbor.environments.docker.docker import DockerEnvironment
 from harbor.environments.kernel import KernelEnvironment
 from kernel import AsyncKernel, Kernel
+
+from harness import providers
 
 CONFIG_FILE = "kernel-config.json"
 PROXY_CREATE = "proxy_create"
 CHROMIUM_ENV = "chromium_env"
 VM_SETUP = "vm_setup"
 RUN_ID_ENV = "BENCH_RUN_ID"
+# Where the task container finds the remote browser's CDP URL. Agents may not
+# pass their environment on to the MCP servers they launch, so it is a file.
+CDP_URL_FILE = "/run/browser/cdp-url"
 
 
 class ProxyCreationError(RuntimeError):
@@ -49,6 +60,10 @@ class ProxyCreationError(RuntimeError):
 
 class VmSetupError(RuntimeError):
     """The browser's VM could not be set up for the trial before the first page load."""
+
+
+class BrowserCreationError(RuntimeError):
+    """The provider could not create the trial's remote browser."""
 
 
 SUPERVISOR_PROGRAM = """[program:chromium]
@@ -210,3 +225,49 @@ class KernelTaskEnvironment(KernelEnvironment):
                     self._proxy_id = None
                 except Exception as error:
                     self.logger.error(f"Failed to delete Kernel proxy {self._proxy_id}: {error}")
+
+
+class RemoteBrowserEnvironment(DockerEnvironment):
+    def __init__(self, environment_dir: Path, *args: Any, **kwargs: Any) -> None:
+        config = json.loads((Path(environment_dir) / CONFIG_FILE).read_text())
+        self._provider_name: str = config["provider"]
+        self._provider = providers.get(self._provider_name)
+        self._create_params: dict[str, Any] = config.get("params") or {}
+        self._browser_session_id: str | None = None
+        super().__init__(environment_dir, *args, **kwargs)
+
+    async def start(self, force_build: bool) -> None:
+        await super().start(force_build)
+        try:
+            session = await self._provider.create(self._create_params)
+        except Exception as error:
+            raise BrowserCreationError(
+                f"Could not create a {self._provider_name} browser: {error}"
+            ) from error
+        self._browser_session_id = session.id
+        self.logger.info(f"Created {self._provider_name} browser {session.id}")
+        self._persistent_env.update(
+            {"BROWSER_PROVIDER": self._provider_name, "BROWSER_SESSION_ID": session.id}
+        )
+        directory = os.path.dirname(CDP_URL_FILE)
+        result = await self.exec(
+            f'mkdir -p {directory} && printf %s "$CDP_URL" > {CDP_URL_FILE} && chmod 0644 {CDP_URL_FILE}',
+            env={"CDP_URL": session.cdp_url},
+            user="root",
+        )
+        if result.return_code != 0:
+            raise BrowserCreationError(f"Could not write {CDP_URL_FILE}: {result.stderr}")
+
+    async def stop(self, delete: bool) -> None:
+        try:
+            await super().stop(delete)
+        finally:
+            if self._browser_session_id is not None:
+                try:
+                    await self._provider.release(self._browser_session_id)
+                    self._browser_session_id = None
+                except Exception as error:
+                    self.logger.error(
+                        f"Failed to release {self._provider_name} browser "
+                        f"{self._browser_session_id}: {error}"
+                    )

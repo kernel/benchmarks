@@ -7,7 +7,9 @@ finalize, and `outcome_<name>` which failure it reported, so bot blocks can be
 told apart from other website errors, Kernel errors and the agent's own
 failures.
 
-The browser's final URL and title are saved, then the verifier checks the
+The browser is the Kernel VM's, reached through Kernel's API, or a remote
+browser reached over CDP when the environment wrote its URL. The browser's
+final URL and title are saved, then the verifier checks the
 cart itself: it reads the page the agent ended on when that is already the
 cart, otherwise opens the task's `cart_url`, or fetches its `cart_api` from
 the page, and sets `cart_verified` when the text matches `cart_match`. When
@@ -22,12 +24,15 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 REPORT = Path("/logs/agent/finalize.json")
 TASK = Path("/opt/bench/task.json")
+# Written by the remote-browser environment; absent in a Kernel browser's VM.
+CDP_URL_FILE = Path("/run/browser/cdp-url")
 VERIFIER = Path("/logs/verifier")
 FAILURES = ("failed", "blocked", "website_error", "kernel_error")
 
@@ -69,6 +74,8 @@ return await page.evaluate(async (url) => {
 
 
 def execute(code: str, timeout_sec: int) -> dict:
+    if CDP_URL_FILE.exists():
+        return execute_over_cdp(code, timeout_sec)
     base = (os.environ.get("KERNEL_BASE_URL") or "https://api.onkernel.com").rstrip("/")
     request = urllib.request.Request(
         f"{base}/browsers/{os.environ['KERNEL_SESSION_ID']}/playwright/execute",
@@ -83,6 +90,23 @@ def execute(code: str, timeout_sec: int) -> dict:
         with urllib.request.urlopen(request, timeout=timeout_sec + 30) as response:
             result = json.load(response)
     except (OSError, ValueError, KeyError) as error:
+        return {"error": str(error)}
+    if not result.get("success"):
+        return {"error": result.get("error")}
+    return result.get("result") or {}
+
+
+def execute_over_cdp(code: str, timeout_sec: int) -> dict:
+    try:
+        output = subprocess.run(
+            ["/opt/bench/cdp-execute", str(timeout_sec)],
+            input=code,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec + 30,
+        )
+        result = json.loads(output.stdout)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         return {"error": str(error)}
     if not result.get("success"):
         return {"error": result.get("error")}

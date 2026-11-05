@@ -11,9 +11,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from harness import preflight
+from harness import preflight, providers
 from harness.configure import configure_tasks
-from harness.definitions import Arm, load_arm, load_benchmark, load_suite, load_toolset
+from harness.definitions import (
+    ENVIRONMENTS,
+    Arm,
+    load_arm,
+    load_benchmark,
+    load_suite,
+    load_toolset,
+)
 from harness.environment import RUN_ID_ENV, delete_run_proxies
 
 # Transient failures worth retrying as a whole trial: Kernel API hiccups and
@@ -104,6 +111,10 @@ def run(
     prepared = prepare(
         benchmark_name, arm_names, task_ids, work_dir, toolset_ref, suite_args, toolset_args
     )
+    for item in prepared:
+        if item.arm.environment == "remote-browser":
+            for configuration in item.configurations.values():
+                preflight.require_env(*providers.get(configuration["browser"]["provider"]).env)
 
     jobs_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = jobs_dir / f"run-{run_id}.json"
@@ -146,7 +157,7 @@ def harbor_command(
         "--path", str(item.dataset),
         "--agent", arm.agent,
         "--model", arm.model,
-        "--env", "harness.environment:KernelTaskEnvironment",
+        "--env", ENVIRONMENTS[arm.environment],
         "--job-name", job_name,
         "--jobs-dir", str(jobs_dir),
         "--n-concurrent", str(concurrency),

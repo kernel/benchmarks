@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 
 import pytest
 from harbor.environments.kernel import KernelEnvironment
@@ -195,3 +196,74 @@ def test_vm_setup_commands_run_as_root_after_the_browser_is_created(tmp_path, mo
     asyncio.run(env._create_browser())
 
     assert calls == [("exec", ["-c", "echo hi"], True), ("exec", ["-c", "true"], True)]
+
+
+class FakeProvider:
+    env = ()
+
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.calls = []
+
+    async def create(self, params):
+        self.calls.append(("create", params))
+        if self.fail:
+            raise RuntimeError("no capacity")
+        return environment.providers.Session("remote-1", "wss://remote/1")
+
+    async def release(self, session_id):
+        self.calls.append(("release", session_id))
+
+
+def _remote_environment(tmp_path, monkeypatch, provider):
+    from harbor.environments.base import ExecResult
+    from harbor.environments.docker.docker import DockerEnvironment
+
+    calls = []
+
+    async def start(self, force_build):
+        calls.append("container started")
+
+    async def stop(self, delete):
+        calls.append("container stopped")
+
+    async def exec(self, command, env=None, user=None, **kwargs):
+        calls.append((command, env, user))
+        return ExecResult(return_code=0)
+
+    def init(self, environment_dir, **kwargs):
+        self._persistent_env = {}
+        self.logger = logging.getLogger("test")
+
+    monkeypatch.setattr(DockerEnvironment, "__init__", init)
+    monkeypatch.setattr(DockerEnvironment, "start", start)
+    monkeypatch.setattr(DockerEnvironment, "stop", stop)
+    monkeypatch.setattr(DockerEnvironment, "exec", exec)
+    monkeypatch.setitem(environment.providers.PROVIDERS, "fake", provider)
+    (tmp_path / "kernel-config.json").write_text(
+        json.dumps({"provider": "fake", "params": {"stealth": True}})
+    )
+    return environment.RemoteBrowserEnvironment(environment_dir=tmp_path), calls
+
+
+def test_remote_browser_is_created_after_the_container_and_released_after(tmp_path, monkeypatch):
+    provider = FakeProvider()
+    env, calls = _remote_environment(tmp_path, monkeypatch, provider)
+
+    asyncio.run(env.start(force_build=False))
+    asyncio.run(env.stop(delete=True))
+
+    assert calls[0] == "container started"
+    command, exec_env, user = calls[1]
+    assert environment.CDP_URL_FILE in command
+    assert exec_env == {"CDP_URL": "wss://remote/1"}
+    assert user == "root"
+    assert env._persistent_env["BROWSER_SESSION_ID"] == "remote-1"
+    assert calls[2] == "container stopped"
+    assert provider.calls == [("create", {"stealth": True}), ("release", "remote-1")]
+
+
+def test_remote_browser_creation_failure_is_identifiable(tmp_path, monkeypatch):
+    env, _ = _remote_environment(tmp_path, monkeypatch, FakeProvider(fail=True))
+    with pytest.raises(environment.BrowserCreationError, match="no capacity"):
+        asyncio.run(env.start(force_build=False))
