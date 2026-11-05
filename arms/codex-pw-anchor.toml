@@ -1,0 +1,24 @@
+# Codex driving an Anchor browser through Playwright MCP over CDP, with
+# Anchor's anti-bot settings: its US proxy, extra stealth and CAPTCHA solving
+# (both need the proxy).
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+environment = "remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "anchor"
+
+[browser.config.params.session]
+proxy = { active = true, type = "anchor_proxy", country_code = "us" }
+# Minutes. The idle timeout covers the gaps between the start page, agent and
+# verifier connections.
+timeout = { max_duration = 45, idle_timeout = 30 }
+
+[browser.config.params.browser]
+extra_stealth = { active = true }
+captcha_solver = { active = true }

@@ -1,0 +1,15 @@
+# Codex driving a Steel browser through Playwright MCP over CDP, with Steel's
+# anti-bot settings: residential proxy and CAPTCHA solving.
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+environment = "remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "steel"
+# timeout is in milliseconds.
+params = { useProxy = true, solveCaptcha = true, timeout = 2700000 }

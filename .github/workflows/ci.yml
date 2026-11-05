@@ -26,6 +26,8 @@ jobs:
         run: uv run bench prepare kernel-mcp-clawbench --arms codex-kernel-mcp,claude-kernel-mcp --tasks v2-1134-chapter-finder-redcross --out "$RUNNER_TEMP/prepared"
       - name: Prepare the static retail-cart arm
         run: uv run bench prepare retail-cart --arms codex-repl --out "$RUNNER_TEMP/prepared-retail-cart"
+      - name: Prepare the retail-cart provider arms
+        run: uv run bench prepare retail-cart-providers --out "$RUNNER_TEMP/prepared-retail-cart-providers"
 
   report:
     runs-on: ubuntu-latest

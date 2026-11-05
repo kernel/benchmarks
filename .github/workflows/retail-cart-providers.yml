@@ -1,0 +1,45 @@
+name: Retail cart flows on each provider's browser
+
+on:
+  workflow_dispatch:
+    inputs:
+      arms:
+        description: Comma-separated arm names (empty runs every arm in benchmarks/retail-cart-providers.toml)
+        required: false
+        default: ""
+        type: string
+      tasks:
+        description: Comma-separated task IDs, or all
+        required: false
+        default: all
+        type: string
+      attempts:
+        description: Trials per task and arm
+        required: false
+        default: "10"
+        type: string
+      concurrency:
+        description: Concurrent trials per arm. Every arm's task containers run on the one runner.
+        required: false
+        default: "4"
+        type: string
+      playwright_mcp_version:
+        description: "@playwright/mcp version to install (empty installs the toolset's pinned version)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    uses: ./.github/workflows/_run.yml
+    secrets: inherit
+    with:
+      benchmark: retail-cart-providers
+      arms: ${{ inputs.arms }}
+      tasks: ${{ inputs.tasks }}
+      attempts: ${{ inputs.attempts }}
+      concurrency: ${{ inputs.concurrency }}
+      toolset_ref: ${{ inputs.playwright_mcp_version }}

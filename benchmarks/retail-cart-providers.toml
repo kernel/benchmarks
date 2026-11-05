@@ -1,0 +1,10 @@
+# The retail-cart tasks on each provider's browser, with the same agent,
+# Playwright MCP tools and task container, so arms differ only in the browser.
+suite = "retail-cart"
+arms = [
+  "codex-pw-kernel",
+  "codex-pw-browserbase",
+  "codex-pw-steel",
+  "codex-pw-hyperbrowser",
+  "codex-pw-anchor",
+]

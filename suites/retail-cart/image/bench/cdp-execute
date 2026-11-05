@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+// Run Playwright code against the trial's remote browser over CDP, the way
+// Kernel's playwright/execute API runs it: the code on stdin is the body of an
+// async function given `page`, `context` and `browser`. Prints
+// {success, result} or {success: false, error} as JSON.
+const fs = require("fs");
+const { chromium } = require("playwright-core");
+
+const CDP_URL_FILE = "/run/browser/cdp-url";
+
+async function main() {
+  const code = fs.readFileSync(0, "utf8");
+  const timeoutMs = Number(process.argv[2] || 60) * 1000;
+  const timer = setTimeout(() => {
+    console.log(JSON.stringify({ success: false, error: `timed out after ${timeoutMs} ms` }));
+    process.exit(0);
+  }, timeoutMs);
+  const browser = await chromium.connectOverCDP(fs.readFileSync(CDP_URL_FILE, "utf8").trim());
+  const context = browser.contexts()[0] ?? (await browser.newContext());
+  // The page the agent was last working in: the newest one that is not blank.
+  const pages = context.pages().filter((p) => p.url() !== "about:blank");
+  const page = pages.at(-1) ?? context.pages()[0] ?? (await context.newPage());
+  const run = new (Object.getPrototypeOf(async () => {}).constructor)("page", "context", "browser", code);
+  const result = await run(page, context, browser);
+  clearTimeout(timer);
+  console.log(JSON.stringify({ success: true, result: result ?? null }));
+  // Exit without closing the browser: the session belongs to the trial.
+  process.exit(0);
+}
+
+main().catch((error) => {
+  console.log(JSON.stringify({ success: false, error: String(error && error.message ? error.message : error) }));
+  process.exit(0);
+});
