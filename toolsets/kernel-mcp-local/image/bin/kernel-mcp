@@ -7,10 +7,12 @@ set -eu
 # mcp-remote expands ${KERNEL_MCP_AUTHORIZATION} itself, which keeps the key
 # off its command line.
 KERNEL_MCP_AUTHORIZATION="Bearer ${KERNEL_API_KEY:-$(cat /run/kernel-mcp/api-key)}"
-export KERNEL_MCP_AUTHORIZATION
+KERNEL_BENCH_ALLOWED_TOOLS="${KERNEL_BENCH_ALLOWED_TOOLS:-$(cat /run/kernel-mcp/allowed-tools)}"
+export KERNEL_MCP_AUTHORIZATION KERNEL_BENCH_ALLOWED_TOOLS
 for _ in $(seq 1 120); do
   if curl -s -o /dev/null http://127.0.0.1:3002/; then
-    exec mcp-remote http://127.0.0.1:3002/mcp \
+    exec mcp-call-log /var/log/kernel-mcp/calls.jsonl \
+      mcp-remote http://127.0.0.1:3002/mcp \
       --header 'Authorization:${KERNEL_MCP_AUTHORIZATION}'
   fi
   sleep 1

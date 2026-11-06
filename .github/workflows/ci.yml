@@ -18,12 +18,19 @@ jobs:
       - uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0
         with:
           version: "0.8.17"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -q
+      - run: node --test suites/public-web/*.test.mjs
       - name: Prepare every static arm for one task
         run: uv run bench prepare kernel-mcp-clawbench --arms codex-kernel-mcp,claude-kernel-mcp --tasks v2-1134-chapter-finder-redcross --out "$RUNNER_TEMP/prepared"
+
+      - name: Prepare all public-web arms
+        run: uv run bench prepare public-web --out "$RUNNER_TEMP/public-web"
 
   report:
     runs-on: ubuntu-latest

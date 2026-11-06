@@ -119,6 +119,57 @@ The Kernel MCP server on ClawBench.
 
 ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whether the agent called Kernel MCP's `execute_playwright_code` and used its assigned browser on every call, so a failed task can be told apart from a trial that never used the toolset.
 
+### `public-web`
+
+Compare three browser approaches on eight signed-out tasks across six sites. The tasks cover
+repository facts and search, hotel rules, flight search and cart preparation, retail search,
+and comparing game prices. No logins, payment details or purchases.
+
+| Arm | Browser tools | Injected tools |
+|---|---|---|
+| `codex-public-control` | Playwright, persistent browser REPL, computer actions and native WebMCP | None |
+| `codex-public-treatment` | Same as control | The site's eligible xwebmcp tools |
+| `codex-public-playwright` | Playwright code only | None |
+
+All three use the same Codex version and model ID, stealth browser settings, task prompt, initial page,
+fixtures and grading. Control and treatment have identical browser instructions; the
+Playwright-only instruction prohibits WebMCP, REPL, computer actions, raw CDP and direct HTTP.
+The stdio proxy filters the advertised tools and rejects calls outside the arm's allowlist,
+calls on another session, and WebMCP registration/removal. Playwright WebMCP calls detected
+in code also invalidate the trial. This is not an arbitrary-code sandbox: instructions and
+trajectory review still matter for calls that bypass MCP.
+
+The catalog, task definitions, eligible tool batches and grader come from one exact
+`kernel/xwebmcp` revision in [suites/public-web/source.toml](suites/public-web/source.toml).
+Task-specific development-branch references are not followed. Kernel MCP is independently
+pinned in the three arm files. This runs in this repository's Harbor harness; it does not
+run xwebmcp's development-eval runner or depend on an unmerged PR.
+
+Prepare all arms without credentials, then smoke-test one task before a full paid run:
+
+```bash
+uv run bench prepare public-web --out /tmp/public-web
+uv run bench run public-web --tasks github-merged-pr --attempts 1 --concurrency 1
+gh workflow run public-web.yml -f tasks=all -f attempts=5 -f concurrency=3
+```
+
+The full workflow defaults to 120 trials (8 tasks × 3 arms × 5 attempts). Each arm runs
+concurrently in the same window, with fresh browsers. These are not randomized matched
+pairs; do not interpret the per-arm medians as a paired speedup or compare different run dates.
+
+The agent calls `finalize` with its JSON answer. The verifier applies the pinned answer
+schema/rules and, for the cart task, reads the final page independently and compares it to
+the answer. A success claim alone is insufficient, and an invalid browser toolset yields
+zero reward. The report separates page-checked passes from answer-rule passes: shape/range
+checks and even pinned rules do not verify every returned fact. Audit examples before
+publishing correctness claims; this catalog is a screening set, not a held-out validation set.
+
+Reports show per-arm and per-task results, agent-only time (excluding setup and grading),
+input/cached/output tokens, browser call counts, WebMCP use, and recorded model cost with
+pricing coverage. Missing or infrastructure-failed trials remain in each arm's intended
+denominator. Raw artifacts stay local; the existing redacted Braintrust publisher also records
+source revisions and grading modes.
+
 ## Extending
 
 ### Add an arm
@@ -196,7 +247,7 @@ tests/
 
 - **Live websites change.** Arms in one run share the same time window. Compare arms within a run rather than across days.
 - **The Harbor provider is pinned to a fork.** Harbor is pinned to a `kernel/harbor` commit until [harbor-framework/harbor#2122](https://github.com/harbor-framework/harbor/pull/2122) is released.
-- **Reporting assumes ClawBench.** The report and Braintrust publisher expect ClawBench-shaped rewards and step layout. They will be generalized when a second suite lands.
+- **Scoring is suite-specific.** ClawBench reports intercepted-request rewards; public-web reports answer-rule passes and page-checked passes separately. Neither report substitutes agent claims for its configured grader.
 
 ## License
 

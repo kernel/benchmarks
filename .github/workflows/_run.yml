@@ -22,6 +22,11 @@ on:
         required: false
         default: "10"
         type: string
+      attempts:
+        description: Trials per task and arm
+        required: false
+        default: "1"
+        type: string
       toolset_ref:
         description: Git ref for toolsets built from source
         required: false
@@ -65,6 +70,10 @@ jobs:
         with:
           bun-version: "1.3.3"
 
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
       - name: Install
         run: |
           uv sync --frozen
@@ -78,13 +87,14 @@ jobs:
           ARMS: ${{ inputs.arms }}
           TASKS: ${{ inputs.tasks }}
           CONCURRENCY: ${{ inputs.concurrency }}
+          ATTEMPTS: ${{ inputs.attempts }}
           TOOLSET_REF: ${{ inputs.toolset_ref }}
         run: |
           run_id="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           jobs_dir="$RUNNER_TEMP/jobs"
           echo "run_file=$jobs_dir/run-$run_id.json" >>"$GITHUB_OUTPUT"
           echo "experiment=$BENCHMARK_NAME-$run_id" >>"$GITHUB_OUTPUT"
-          args=(--tasks "$TASKS" --concurrency "$CONCURRENCY" --jobs-dir "$jobs_dir" --run-id "$run_id")
+          args=(--tasks "$TASKS" --concurrency "$CONCURRENCY" --attempts "$ATTEMPTS" --jobs-dir "$jobs_dir" --run-id "$run_id")
           [[ -n "$ARMS" ]] && args+=(--arms "$ARMS")
           [[ -n "$TOOLSET_REF" ]] && args+=(--toolset-ref "$TOOLSET_REF")
           uv run bench run "$BENCHMARK_NAME" "${args[@]}"

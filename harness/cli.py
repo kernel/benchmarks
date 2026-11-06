@@ -35,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     run_command.add_argument(
         "--concurrency", type=int, default=10, help="concurrent trials per arm"
     )
+    run_command.add_argument("--attempts", type=int, default=1, help="trials per task and arm")
     run_command.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
 
     args = parser.parse_args(argv)
@@ -56,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
             args.run_id,
             args.concurrency,
             args.toolset_ref,
+            args.attempts,
         )
     for arm, status in statuses.items():
         print(f"{arm}: harbor exited {status} -> {args.jobs_dir / f'{arm}-{args.run_id}'}")

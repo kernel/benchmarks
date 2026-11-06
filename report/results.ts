@@ -51,6 +51,8 @@ export interface BenchmarkTrial {
   };
   expectedBrowserSessionId?: string;
   kernelMcpSha?: string;
+  sourceRevision?: string;
+  taskGrading?: string;
   trajectoryPath?: string;
   startedAt?: string;
   finishedAt?: string;
@@ -272,11 +274,15 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
     join(trialDir, "steps/run/verifier/kernel-mcp-result.json"),
   );
 
+  const sourceInfo = readJsonIfPresent(
+    join(trialDir, "steps/run/verifier/source.json"),
+  );
+
   return {
     arm,
     id: string(result.id) ?? basename(trialDir),
     taskName:
-      string(result.task_name)?.replace(/^clawbench\//, "") ??
+      string(result.task_name)?.replace(/^(?:clawbench|public-web)\//, "") ??
       string(object(config.task).name) ??
       basename(trialDir).split("__", 1)[0],
     trialName: string(result.trial_name) ?? basename(trialDir),
@@ -305,6 +311,9 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
       start: isoSeconds(startedAt),
       end: isoSeconds(finishedAt),
       ...trajectoryMetrics(trajectoryPath),
+      ...(number(kernelMcpResult.browser_calls) === undefined
+        ? {}
+        : { toolCalls: number(kernelMcpResult.browser_calls) }),
     },
     phases: {
       environmentSetup: phase(result.environment_setup),
@@ -314,6 +323,8 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
     },
     expectedBrowserSessionId: string(kernelMcpResult.expected_session_id),
     kernelMcpSha: string(kernelMcpResult.kernel_mcp_server_sha),
+    sourceRevision: string(sourceInfo.sha),
+    taskGrading: string(sourceInfo.grading),
     trajectoryPath: existsSync(trajectoryPath) ? trajectoryPath : undefined,
     startedAt,
     finishedAt,
@@ -372,7 +383,7 @@ export function readBenchmarkArm(input: ArmInput): BenchmarkArm {
   };
 }
 
-function median(values: number[]): number | undefined {
+export function median(values: number[]): number | undefined {
   if (values.length === 0) return undefined;
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);

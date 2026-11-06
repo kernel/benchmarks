@@ -54,7 +54,9 @@ def prepare(
         shutil.copytree(base, dataset)
         arm_tasks = sorted(path for path in dataset.iterdir() if path.is_dir())
         configurations = configure_tasks(arm_tasks, arm.browser)
-        load_toolset(arm.toolset).apply(arm_tasks, ref=toolset_ref)
+        load_toolset(arm.toolset).apply(
+            arm_tasks, ref=toolset_ref or arm.toolset_ref, **arm.toolset_args
+        )
         prepared.append(PreparedArm(arm, dataset, configurations))
     return prepared
 
@@ -68,6 +70,7 @@ def run(
     run_id: str,
     concurrency: int,
     toolset_ref: str | None = None,
+    attempts: int = 1,
 ) -> dict[str, int]:
     """Run every arm in parallel and return each arm's Harbor exit status.
 
@@ -76,6 +79,8 @@ def run(
     starts and updated as each arm finishes, so an interrupted run can still
     be reported.
     """
+    if attempts < 1 or concurrency < 1:
+        raise SystemExit("attempts and concurrency must be positive")
     preflight.check_kernel_project()
     load_suite(load_benchmark(benchmark_name).suite).preflight()
     prepared = prepare(benchmark_name, arm_names, task_ids, work_dir, toolset_ref)
@@ -97,7 +102,7 @@ def run(
         job_name = f"{item.arm.name}-{run_id}"
         with (jobs_dir / f"{job_name}.log").open("w") as log:
             processes[item.arm.name] = subprocess.Popen(
-                harbor_command(item, jobs_dir, job_name, concurrency),
+                harbor_command(item, jobs_dir, job_name, concurrency, attempts),
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
@@ -107,7 +112,9 @@ def run(
     return {name: entry["status"] for name, entry in manifest.items()}
 
 
-def harbor_command(item: PreparedArm, jobs_dir: Path, job_name: str, concurrency: int) -> list[str]:
+def harbor_command(
+    item: PreparedArm, jobs_dir: Path, job_name: str, concurrency: int, attempts: int = 1
+) -> list[str]:
     arm = item.arm
     command = [
         str(Path(sys.executable).parent / "harbor"),
@@ -119,12 +126,15 @@ def harbor_command(item: PreparedArm, jobs_dir: Path, job_name: str, concurrency
         "--job-name", job_name,
         "--jobs-dir", str(jobs_dir),
         "--n-concurrent", str(concurrency),
+        "--n-attempts", str(attempts),
         "--max-retries", "5",
         "--delete",
         "--yes",
     ]  # fmt: skip
     if arm.agent_version:
         command += ["--agent-kwarg", f"version={arm.agent_version}"]
+    for key, value in arm.agent_kwargs.items():
+        command += ["--agent-kwarg", f"{key}={json.dumps(value)}"]
     for exception in RETRY_EXCEPTIONS:
         command += ["--retry-include", exception]
     return command

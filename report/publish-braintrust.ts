@@ -202,6 +202,8 @@ function trialMetadata(trial: BenchmarkTrial): Record<string, unknown> {
     agentConfigHash: trial.agentConfigHash,
     model: trial.model,
     kernelMcpSha: trial.kernelMcpSha,
+    sourceRevision: trial.sourceRevision,
+    taskGrading: trial.taskGrading,
     errorClass: trial.errorClass,
     rewards: trial.rewards,
     durationMs: trial.metrics.durationMs,
