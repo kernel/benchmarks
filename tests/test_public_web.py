@@ -30,7 +30,7 @@ def test_public_arms_change_only_the_approach():
 
 
 def test_attempts_and_agent_options_reach_harbor(tmp_path):
-    arm = load_arm("codex-public-control")
+    arm = load_arm("public-control")
     command = harbor_command(PreparedArm(arm, tmp_path, {}), tmp_path, "trial", 2, 5)
     assert command[command.index("--n-attempts") + 1] == "5"
     assert "disable_web_search=true" in command

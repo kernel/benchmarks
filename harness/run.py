@@ -38,9 +38,11 @@ def prepare(
     task_ids: list[str] | None,
     work_dir: Path,
     toolset_ref: str | None = None,
+    runner: str | None = None,
+    model: str | None = None,
 ) -> list[PreparedArm]:
     benchmark = load_benchmark(benchmark_name)
-    arms = [load_arm(name) for name in (arm_names or benchmark.arms)]
+    arms = [load_arm(name, runner=runner, model=model) for name in (arm_names or benchmark.arms)]
     suite = load_suite(benchmark.suite)
 
     base = work_dir / "tasks"
@@ -71,6 +73,8 @@ def run(
     concurrency: int,
     toolset_ref: str | None = None,
     attempts: int = 1,
+    runner: str | None = None,
+    model: str | None = None,
 ) -> dict[str, int]:
     """Run every arm in parallel and return each arm's Harbor exit status.
 
@@ -83,7 +87,9 @@ def run(
         raise SystemExit("attempts and concurrency must be positive")
     preflight.check_kernel_project()
     load_suite(load_benchmark(benchmark_name).suite).preflight()
-    prepared = prepare(benchmark_name, arm_names, task_ids, work_dir, toolset_ref)
+    prepared = prepare(
+        benchmark_name, arm_names, task_ids, work_dir, toolset_ref, runner=runner, model=model
+    )
 
     jobs_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = jobs_dir / f"run-{run_id}.json"
@@ -92,10 +98,23 @@ def run(
             "job_dir": str(jobs_dir / f"{item.arm.name}-{run_id}"),
             "status": None,
             "browser_configurations": item.configurations,
+            "runner": {
+                "preset": item.arm.runner,
+                "agent": item.arm.agent,
+                "model": item.arm.model,
+                "agent_version": item.arm.agent_version,
+                "agent_kwargs": item.arm.agent_kwargs,
+            },
         }
         for item in prepared
     }
-    manifest_path.write_text(json.dumps(manifest, indent=2))
+    try:
+        with manifest_path.open("x") as output:
+            json.dump(manifest, output, indent=2)
+    except FileExistsError:
+        raise SystemExit(
+            f"{manifest_path} already exists; use a new --run-id for each experiment"
+        ) from None
 
     processes = {}
     for item in prepared:

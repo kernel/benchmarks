@@ -28,6 +28,7 @@ A full ClawBench run is 129 trials per arm. [Preparing tasks](#quick-start) for 
 | **Suite** | A set of tasks, adapted into Harbor tasks, with its own scoring. | [ClawBench](https://github.com/TIGER-AI-Lab/ClawBench): 129 tasks on real websites, scored by intercepting the final request |
 | **Toolset** | What the agent uses to drive the browser. | `kernel-mcp-local`: the [Kernel MCP server](https://github.com/kernel/kernel-mcp-server), built from source |
 | **Agent** | A Harbor agent, model, and version. | Codex with `gpt-5.6-luna` |
+| **Runner preset** | Reusable agent, model, version and agent options, independent of browser approach. | `pi`, `claude`, `codex` in `runners/` |
 | **Arm** | One agent + toolset + browser configuration. The thing being compared. | `codex-kernel-mcp-site-config` |
 | **Configurator** | Optional. Picks browser settings per task, and can add advice for the agent. | `site-config`: asks Kernel's [config registry](https://kernel.sh/docs/config-registry) what works on the task's site |
 | **Benchmark** | A suite plus the arms to run on it. One GitHub workflow each. | `kernel-mcp-clawbench` |
@@ -72,9 +73,9 @@ uv run bench run kernel-mcp-clawbench \
 
 Harbor writes one job directory per arm under `jobs/`, containing rewards, trajectories, and verifier output. To summarize jobs, run `bun report/report.ts --arm <name>=<job dir>` (needs [Bun](https://bun.sh)).
 
-`--tasks` takes comma-separated task IDs or `all`. `--concurrency` sets concurrent trials per arm. `--toolset-ref` builds a toolset from a specific git ref, e.g. a Kernel MCP server branch.
+`--tasks` takes comma-separated task IDs or `all`. `--concurrency` sets concurrent trials per arm. `--toolset-ref` builds a toolset from a specific git ref, e.g. a Kernel MCP server branch. `--runner` selects a preset from `runners/` and `--model` overrides its model, for every selected arm. Both also work with `bench prepare`; a model override alone does not change the runner.
 
-The run also writes `jobs/run-<id>.json`, which maps each arm to its job directory, exit status, and the browser settings and site guidance each task got.
+The run also writes `jobs/run-<id>.json`, which maps each arm to its job directory, exit status, resolved runner/model/version/options, and the browser settings and site guidance each task got. Use a unique `--run-id` for each experiment; an existing run manifest is never overwritten.
 
 A run of two arms on two tasks (Red Cross and Indeed) produced this summary:
 
@@ -127,12 +128,12 @@ and comparing game prices. No logins, payment details or purchases.
 
 | Arm | Browser tools | Injected tools |
 |---|---|---|
-| `codex-public-control` | Playwright, persistent browser REPL, computer actions and native WebMCP | None |
-| `codex-public-treatment` | Same as control | The site's eligible xwebmcp tools |
-| `codex-public-playwright` | Playwright code only | None |
+| `public-control` | Playwright, persistent browser REPL, computer actions and native WebMCP | None |
+| `public-treatment` | Same as control | The site's eligible xwebmcp tools |
+| `public-playwright` | Playwright code only | None |
 
-All three use the same Codex version and model ID, stealth browser settings, task prompt, initial page,
-fixtures and grading. Control and treatment have identical browser instructions; the
+All three use the same selected runner/model (Codex by default), stealth browser settings, task prompt,
+initial page, fixtures and grading. Control and treatment have identical browser instructions; the
 Playwright-only instruction prohibits WebMCP, REPL, computer actions, raw CDP and direct HTTP.
 The stdio proxy filters the advertised tools and rejects calls outside the arm's allowlist,
 calls on another session, and WebMCP registration/removal. Playwright WebMCP calls detected
@@ -152,6 +153,40 @@ uv run bench prepare public-web --out /tmp/public-web
 uv run bench run public-web --tasks github-merged-pr --attempts 1 --concurrency 1
 gh workflow run public-web.yml -f tasks=all -f attempts=5 -f concurrency=3
 ```
+
+#### Switching models and providers
+
+The browser arms contain no model-specific configuration. Their default is `runner = "codex"`;
+`--runner` replaces the agent, version and **all** agent options together, so Codex options cannot
+leak into another agent. `--model` changes only the model ID, leaving the runner's version and
+options fixed. The workflow exposes the same runner selector and optional model field.
+
+| Preset | Agent | Version | Default model |
+|---|---|---|---|
+| `codex` | Codex | 0.163.0 | `gpt-6-luna` |
+| `claude` | Claude Code | 2.1.301 | `claude-sonnet-5` |
+| `pi` | Pi | 0.85.1 | `anthropic/claude-sonnet-5` |
+
+For model comparisons, use **Pi in both runs** so the agent loop, version, browser tools and
+`thinking = "medium"` setting stay fixed. Pi uses `provider/model` IDs and the appropriate provider
+key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`). Run close together with the same tasks and settings:
+
+```bash
+uv run bench run public-web --runner pi --model anthropic/claude-sonnet-5 \
+  --run-id sonnet-5-pilot --tasks github-merged-pr --attempts 1 --concurrency 1
+uv run bench run public-web --runner pi --model openai/gpt-5.4 \
+  --run-id gpt-54-pilot --tasks github-merged-pr --attempts 1 --concurrency 1
+```
+
+To benchmark the native Claude Code agent instead, use `--runner claude --model claude-sonnet-5`.
+Comparing native Codex against Claude Code changes both the model and the agent; it is not a
+model-only comparison. The same thinking label also does not imply equal compute across models.
+
+Pi is pinned to the version supported by the pinned Harbor MCP adapter. Use IDs available in that
+Pi model catalog; newer model IDs may require a compatible Pi/Harbor update. No provider login or
+model access is implied by selecting a preset, and live model availability still depends on the
+provider account. Add another MCP-capable Harbor agent by adding a file under `runners/`, rather
+than duplicating the three browser arms. Credentials stay in environment variables, not presets.
 
 The full workflow defaults to 120 trials (8 tasks × 3 arms × 5 attempts). Each arm runs
 concurrently in the same window, with fresh browsers. These are not randomized matched
@@ -234,7 +269,8 @@ Then add `benchmarks/<name>.toml` and a workflow that calls `_run.yml`.
 
 ```
 benchmarks/      suite + arms per benchmark
-arms/            agent, model, toolset, browser settings
+arms/            browser approach + runner preset (or inline agent settings)
+runners/         reusable agent, model, version and agent options
 suites/          task sets adapted to Harbor
 toolsets/        browser tools for the agent
 configurators/   per-task browser settings and guidance

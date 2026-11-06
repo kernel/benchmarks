@@ -99,9 +99,15 @@ test("public-web reports agent time, tokens, graded outcomes and pricing coverag
     recordedCostUsd: 0.25,
     pricedTrials: 1,
   });
-  expect(arm.trials[0].metrics.toolCalls).toBe(7);
-  expect(arm.trials[2].metrics.toolCalls).toBe(0);
-  expect(arm.trials[0].sourceRevision).toBe("a".repeat(40));
+  expect(
+    arm.trials.find((trial) => trial.id === "trial-1")?.metrics.toolCalls,
+  ).toBe(7);
+  expect(
+    arm.trials.find((trial) => trial.id === "trial-3")?.metrics.toolCalls,
+  ).toBe(0);
+  expect(
+    arm.trials.find((trial) => trial.id === "trial-1")?.sourceRevision,
+  ).toBe("a".repeat(40));
   expect(
     buildExperimentEvents([arm], "public-web-test").some(
       (event) =>

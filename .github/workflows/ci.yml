@@ -31,6 +31,11 @@ jobs:
 
       - name: Prepare all public-web arms
         run: uv run bench prepare public-web --out "$RUNNER_TEMP/public-web"
+      - name: Prepare alternate runners
+        run: |
+          for runner in claude pi; do
+            uv run bench prepare public-web --runner "$runner" --tasks github-merged-pr --out "$RUNNER_TEMP/public-web-$runner"
+          done
 
   report:
     runs-on: ubuntu-latest
