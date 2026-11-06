@@ -28,6 +28,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         command.add_argument("--tasks", default="all", help="comma-separated task IDs, or all")
         command.add_argument("--toolset-ref", help="git ref for toolsets built from source")
+        command.add_argument(
+            "--runner", help="runner preset from runners/, applied to every selected arm"
+        )
+        command.add_argument(
+            "--model", help="override the model for every selected arm; does not change the runner"
+        )
 
     commands.choices["prepare"].add_argument("--out", type=Path, required=True)
     run_command = commands.choices["run"]
@@ -35,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     run_command.add_argument(
         "--concurrency", type=int, default=10, help="concurrent trials per arm"
     )
+    run_command.add_argument("--attempts", type=int, default=1, help="trials per task and arm")
     run_command.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
 
     args = parser.parse_args(argv)
@@ -42,8 +49,18 @@ def main(argv: list[str] | None = None) -> int:
     tasks = _split(args.tasks)
 
     if args.command == "prepare":
-        for item in prepare(args.benchmark, arms, tasks, args.out, args.toolset_ref):
-            print(f"{item.arm.name}: {item.dataset}")
+        for item in prepare(
+            args.benchmark,
+            arms,
+            tasks,
+            args.out,
+            args.toolset_ref,
+            runner=args.runner,
+            model=args.model,
+        ):
+            print(
+                f"{item.arm.name}: {item.dataset} ({item.arm.agent}@{item.arm.agent_version}, {item.arm.model})"
+            )
         return 0
 
     with tempfile.TemporaryDirectory() as work_dir:
@@ -56,6 +73,9 @@ def main(argv: list[str] | None = None) -> int:
             args.run_id,
             args.concurrency,
             args.toolset_ref,
+            args.attempts,
+            runner=args.runner,
+            model=args.model,
         )
     for arm, status in statuses.items():
         print(f"{arm}: harbor exited {status} -> {args.jobs_dir / f'{arm}-{args.run_id}'}")

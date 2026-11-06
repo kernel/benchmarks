@@ -1,74 +1,98 @@
 #!/usr/bin/env python3
-"""Add `kernel_mcp_valid` to the task's rewards.
-
-The suite's verifier owns the task reward. This check records whether the
-agent called Kernel MCP's `execute_playwright_code`, and whether every call
-used the browser Harbor assigned to the trial, so a failed task can be told
-apart from a trial that never exercised the toolset. It does not see browser
-control outside Kernel MCP, such as direct CDP connections.
-"""
+"""Record browser tool usage from the stdio call log, independently of agent transcripts."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any
 
-LOGS = Path("/logs")
-VERIFIER = LOGS / "verifier"
-PLAYWRIGHT_TOOLS = {
-    "execute_playwright_code",
-    "kernel__execute_playwright_code",
-    "mcp__kernel__execute_playwright_code",
+LOGS = Path("/var/log/kernel-mcp")
+VERIFIER = Path("/logs/verifier")
+TOOLS = {
+    "playwright": "execute_playwright_code",
+    "repl": "browser_repl",
+    "computer": "computer_action",
+    "webmcp": "webmcp",
 }
 
 
-def read_object(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return value if isinstance(value, dict) else {}
+def read_calls(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    calls = []
+    for line in path.read_text().splitlines():
+        try:
+            calls.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return calls
+
+
+def check_calls(
+    calls: list[dict[str, Any]], enabled: list[str], session: str | None, approach: str | None
+) -> dict[str, Any]:
+    allowed = {TOOLS[name] for name in enabled if name in TOOLS}
+    browser_calls = [call for call in calls if call.get("tool") in allowed]
+    sessions = {(call.get("arguments") or {}).get("session_id") for call in browser_calls}
+    invoked = any(
+        (call.get("tool") == "webmcp" and (call.get("arguments") or {}).get("action") == "invoke")
+        or re.search(r"\binvokeTool\s*\(", (call.get("arguments") or {}).get("code", ""))
+        for call in browser_calls
+    )
+    checks = {
+        "used_kernel_mcp": bool(browser_calls),
+        "used_assigned_browser": bool(session) and sessions == {session},
+    }
+    if approach:
+        checks["allowed_tools_only"] = all(
+            call.get("tool") in allowed and not call.get("rejected") for call in calls
+        )
+    if approach == "playwright":
+        checks["no_webmcp"] = not any(
+            re.search(
+                r"\b(?:listTools|invokeTool)\s*\(", (call.get("arguments") or {}).get("code", "")
+            )
+            for call in browser_calls
+        )
+    return {
+        "valid": all(checks.values()),
+        "checks": checks,
+        "enabled_toolsets": enabled,
+        "expected_session_id": session,
+        "called_session_ids": sorted(str(value) for value in sessions),
+        "browser_calls": len(browser_calls),
+        "browser_call_ms": sum(call.get("duration_ms") or 0 for call in browser_calls),
+        "browser_call_errors": sum(bool(call.get("is_error")) for call in browser_calls),
+        "webmcp_invoked": bool(invoked),
+    }
 
 
 def main() -> int:
     VERIFIER.mkdir(parents=True, exist_ok=True)
-    if Path("/var/log/kernel-mcp").is_dir():
-        shutil.copytree("/var/log/kernel-mcp", VERIFIER / "kernel-mcp", dirs_exist_ok=True)
-
-    trajectory = read_object(LOGS / "agent" / "trajectory.json")
-    calls = [
-        call
-        for step in trajectory.get("steps") or []
-        for call in step.get("tool_calls") or []
-        if call.get("function_name") in PLAYWRIGHT_TOOLS
-    ]
-    called_sessions = {(call.get("arguments") or {}).get("session_id") for call in calls}
-    expected_session = os.environ.get("KERNEL_SESSION_ID")
-    checks = {
-        "used_kernel_mcp": bool(calls),
-        "used_assigned_browser": bool(expected_session) and called_sessions == {expected_session},
-    }
-    valid = all(checks.values())
-
+    if LOGS.is_dir():
+        shutil.copytree(LOGS, VERIFIER / "kernel-mcp", dirs_exist_ok=True)
+    approach = os.environ.get("BROWSER_APPROACH")
+    result = check_calls(
+        read_calls(LOGS / "calls.jsonl"),
+        os.environ.get("KERNEL_MCP_ENABLED_TOOLSETS", "playwright").split(","),
+        os.environ.get("KERNEL_SESSION_ID"),
+        approach,
+    )
     sha_file = Path("/opt/kernel-mcp-server/SOURCE_SHA")
-    result = {
-        "valid": valid,
-        "checks": checks,
-        "expected_session_id": expected_session,
-        "called_session_ids": sorted(str(value) for value in called_sessions),
-        "kernel_mcp_server_sha": sha_file.read_text().strip() if sha_file.exists() else None,
-    }
+    result["kernel_mcp_server_sha"] = sha_file.read_text().strip() if sha_file.exists() else None
     (VERIFIER / "kernel-mcp-result.json").write_text(json.dumps(result, indent=2))
-
-    # Only extend structured rewards; adding reward.json next to a suite's
-    # reward.txt would hide the task reward.
     reward_path = VERIFIER / "reward.json"
     if reward_path.exists():
-        rewards = read_object(reward_path)
-        rewards["kernel_mcp_valid"] = float(valid)
+        rewards = json.loads(reward_path.read_text())
+        rewards["kernel_mcp_valid"] = float(result["valid"])
+        if approach:
+            rewards["webmcp_invoked"] = float(result["webmcp_invoked"])
+            if not result["valid"]:
+                rewards["reward"] = 0.0
         reward_path.write_text(json.dumps(rewards, indent=2))
     return 0
 

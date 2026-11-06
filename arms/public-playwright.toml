@@ -1,0 +1,9 @@
+runner = "codex"
+toolset = "browser-approach"
+toolset_ref = "df5a5e2f9d701aba1d7b6cc115f939448e840b48"
+
+[toolset_args]
+approach = "playwright"
+
+[browser]
+config = { stealth = true }

@@ -1,0 +1,41 @@
+name: Public web browser approaches
+
+on:
+  workflow_dispatch:
+    inputs:
+      tasks:
+        description: Comma-separated task IDs, or all
+        default: all
+      arms:
+        description: Comma-separated arm names, or empty for all three
+        default: ""
+      runner:
+        description: Agent runner preset (pi keeps one agent loop across providers)
+        type: choice
+        options: [codex, claude, pi]
+        default: codex
+      model:
+        description: Optional model override (Pi uses provider/model)
+        default: ""
+      attempts:
+        description: Trials per task and arm
+        default: "5"
+      concurrency:
+        description: Concurrent trials per arm
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_run.yml
+    with:
+      benchmark: public-web
+      tasks: ${{ inputs.tasks }}
+      arms: ${{ inputs.arms }}
+      runner: ${{ inputs.runner }}
+      model: ${{ inputs.model }}
+      attempts: ${{ inputs.attempts }}
+      concurrency: ${{ inputs.concurrency }}
+    secrets: inherit

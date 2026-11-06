@@ -1,0 +1,13 @@
+repository = "https://github.com/kernel/xwebmcp"
+revision = "e4e30fc86d44790bd4df441ef6b205155836b5c1"
+
+tasks = [
+  "github-repo-details",
+  "github-merged-pr",
+  "github-top-repos-for-topic",
+  "booking-house-rules",
+  "google-flights-cheapest-fare",
+  "delta-cart-main-classic",
+  "target-search-first-result",
+  "steam-compare-series",
+]
