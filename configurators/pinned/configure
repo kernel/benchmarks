@@ -6,7 +6,10 @@ ISP or US residential, created per trial. A `persona` of `macos` restarts
 Chromium with the macOS persona's launcher variables. `vm_setup` commands run as root
 in the browser's VM before the first page load.
 
-stdin:  {"task": {"config": str, "instruction": str}, "args": {}}
+`args.extra_steering` maps a site to guidance appended to its table entry's,
+so an arm can test guidance without changing the table.
+
+stdin:  {"task": {"config": str, "instruction": str}, "args": {"extra_steering": {site: str}}}
 stdout: {"browser": {...}, "steering": str | null, "provenance": {...}}
 """
 
@@ -21,7 +24,8 @@ TABLE = tomllib.loads((Path(__file__).parent / "sites.toml").read_text())
 
 
 def main() -> int:
-    task = json.load(sys.stdin)["task"]
+    payload = json.load(sys.stdin)
+    task = payload["task"]
     site = tomllib.loads(task["config"]).get("metadata", {}).get("site")
     entry = TABLE["sites"].get(site)
     if entry is None:
@@ -35,10 +39,12 @@ def main() -> int:
         raise SystemExit(f"Unknown persona {persona!r} for {site}")
     if entry.get("vm_setup"):
         browser["vm_setup"] = entry["vm_setup"]
+    extra = (payload.get("args") or {}).get("extra_steering", {}).get(site)
+    steering = "\n\n".join(part.strip() for part in (entry.get("steering"), extra) if part) or None
     json.dump(
         {
             "browser": browser,
-            "steering": entry.get("steering"),
+            "steering": steering,
             "provenance": {"site": site, "proxy": entry["proxy"], "persona": persona},
         },
         sys.stdout,

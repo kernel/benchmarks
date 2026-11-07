@@ -130,3 +130,18 @@ start_url = "https://www.wbmason.com/"
 item = "a pack of Post-it 3 x 3 in canary yellow sticky notes"
 cart_url = "https://www.wbmason.com/shopping-cart"
 cart_match = 'Post-it|sticky note'
+
+# A guest car rental booking rather than a cart. It stops at Avis's
+# review-and-book page ("Let's finalize your trip"), which shows the chosen car
+# and the estimated total above the driver details form. The step that fails
+# most is the search form's "Show cars", which leads to the vehicle list.
+[[tasks]]
+id = "avis-guest-reservation"
+site = "avis.com"
+start_url = "https://www.avis.com/en/home"
+item = "rental car"
+goal = "Start a guest reservation for a rental car on avis.com: pick up and return at Chicago O'Hare International Airport (ORD), pick up on {start} at 10:00 AM and return on {end} at 10:00 AM. Choose the cheapest car with a pay-later rate and continue to the page where Avis asks for the driver's details. Report the car class and example model, the pick-up and return shown there, and the estimated total."
+route = "Use the site's own reservation form, menus and links. The reservation must be on {site}."
+stop_at = "the page that asks for the driver's details; do not fill in that form"
+cart_url = "https://www.avis.com/en/reservation/review-and-book"
+cart_match = "FINALIZE YOUR TRIP"

@@ -120,3 +120,22 @@ def test_cart_check_tells_a_bot_check_from_an_empty_cart(monkeypatch):
     assert page("Your cart is empty")["unverifiable"] is False
     blocked = page("Please verify yourself to continue", "https://shop.test/splashui/captcha")
     assert blocked["verified"] is False and blocked["unverifiable"] is True
+
+
+def test_a_task_can_replace_the_cart_goal_with_dated_booking_steps(tmp_path):
+    [task_dir] = suite.generate(["avis-guest-reservation"], tmp_path)
+
+    instruction = (task_dir / "steps/run/instruction.md").read_text()
+    assert "Chicago O'Hare" in instruction
+    assert "shopping cart" not in instruction
+    assert "Stop at the page that asks for the driver's details" in instruction
+    assert "{start}" not in instruction and "{end}" not in instruction
+
+
+def test_booking_dates_are_two_weeks_out():
+    from datetime import date
+
+    [task] = [task for task in suite.load_tasks() if task.id == "avis-guest-reservation"]
+    instruction = task.instruction(date(2026, 11, 7))
+    assert "Saturday, November 21, 2026" in instruction
+    assert "Monday, November 23, 2026" in instruction

@@ -121,7 +121,7 @@ ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whet
 
 ### `retail-cart`
 
-Guest add-to-cart tasks on 16 retail and industrial-supply sites with heavy bot protection. Each task starts on the site's home page and asks the agent to put one item in the site's cart as a guest, by whatever route works, and show the cart.
+Guest add-to-cart tasks on 16 retail and industrial-supply sites with heavy bot protection. Each task starts on the site's home page and asks the agent to put one item in the site's cart as a guest, by whatever route works, and show the cart. One more task, `avis-guest-reservation`, books a rental car as a guest on avis.com up to the driver details form; its dates are set two weeks after the tasks are generated.
 
 | Arm | Agent | Browser |
 |---|---|---|
