@@ -107,3 +107,6 @@ steering = """
 On zoro.com the first page load is often refused with a 403 or a bot-check page. That refusal sets a cookie, and loading the same URL once more usually shows the real site, so if the first load is blocked, load it again once. If the page says "Access is temporarily restricted", reloading will not help: report the task as blocked.
 """
 
+[sites."avis.com"]
+browser = { stealth = true }
+proxy = "isp"
