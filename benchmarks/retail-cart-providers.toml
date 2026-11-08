@@ -3,6 +3,7 @@
 suite = "retail-cart"
 arms = [
   "codex-pw-kernel",
+  "codex-pw-kernel-evervault",
   "codex-pw-browserbase",
   "codex-pw-steel",
   "codex-pw-hyperbrowser",

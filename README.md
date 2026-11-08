@@ -92,6 +92,7 @@ A run of two arms on two tasks (Red Cross and Indeed) produced this summary:
 | `PURELY_MAIL_API_KEY`, `PURELY_MAIL_DOMAIN` | ClawBench creates a disposable [PurelyMail](https://purelymail.com) mailbox on your domain for every task, so agents can sign up and receive confirmation emails. |
 | `CLAWBENCH_JUDGE_BASE_URL`, `CLAWBENCH_JUDGE_API_KEY`, `CLAWBENCH_JUDGE_MODEL`, `CLAWBENCH_JUDGE_API_TYPE` | ClawBench's LLM judge, which checks the intercepted request against the task. Any OpenAI-compatible endpoint works with `CLAWBENCH_JUDGE_API_TYPE=openai-completions`; we use `deepseek/deepseek-v4-pro` through OpenRouter. See [ClawBench](https://github.com/TIGER-AI-Lab/ClawBench) for details. |
 | `BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`, `STEEL_API_KEY`, `HYPERBROWSER_API_KEY`, `ANCHOR_API_KEY` | Arms on those providers' browsers (`environment = "remote-browser"`); checked before a run that includes them |
+| `EV_APP_UUID`, `EV_API_KEY` | `codex-pw-kernel-evervault`, which mints an Evervault Browser Tokens session per trial for its proxy. The key needs `browserToken:create`. |
 | `BRAINTRUST_API_KEY`, `BRAINTRUST_PROJECT` | Optional: publishing results |
 
 ## Running in GitHub Actions
@@ -147,6 +148,7 @@ The `retail-cart` tasks on each browser provider's browser. Every arm uses the s
 | Arm | Browser |
 |---|---|
 | `codex-pw-kernel` | Kernel, `stealth: true` |
+| `codex-pw-kernel-evervault` | Kernel, `stealth: true`, with the whole session sent through Evervault's browser proxy: a new Evervault session and Kernel custom proxy with Evervault's CA per trial |
 | `codex-pw-browserbase` | Browserbase, Advanced Stealth (Scale plan), CAPTCHA solving, its residential proxies |
 | `codex-pw-steel` | Steel, residential proxy and CAPTCHA solving |
 | `codex-pw-hyperbrowser` | Hyperbrowser, stealth, proxy and CAPTCHA solving |

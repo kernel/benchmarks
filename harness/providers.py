@@ -10,6 +10,7 @@ is opened, the agent connects, and the verifier connects, each separately.
 from __future__ import annotations
 
 import os
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -44,6 +45,85 @@ class KernelProvider(Provider):
     async def release(self, session_id: str) -> None:
         async with AsyncKernel() as client:
             await client.browsers.delete_by_id(session_id)
+
+
+class KernelEvervaultProvider(Provider):
+    """A Kernel browser whose whole session goes through Evervault's browser proxy.
+
+    Each session mints its own Evervault Browser Tokens session, which carries
+    the proxy credentials, and creates a Kernel custom proxy from them with
+    Evervault's CA bundle, since the proxy terminates TLS. The mint holds one
+    placeholder credential: the session is only used for its proxy, and no
+    real value is ever revealed. `params` holds the Kernel browser create
+    params, plus an `evervault` table with the mint's `ttl`, the `hosts` it
+    may reveal to, and optionally `proxy_settings` for Evervault's egress.
+    """
+
+    env = ("KERNEL_API_KEY", "EV_APP_UUID", "EV_API_KEY")
+    mint_url = "https://api.evervault.com/browser-tokens"
+    ca_url = "https://ca.evervault.com"
+
+    def __init__(self) -> None:
+        self._ca_bundle: str | None = None
+        self._proxies: dict[str, str] = {}
+
+    async def _mint(self, settings: dict[str, Any]) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "ttl": settings.get("ttl", 900),
+            "data": [{"id": "bench", "category": "credential.password", "value": "bench"}],
+            "permissions": [{"action": "decrypt", "target": host} for host in settings["hosts"]],
+        }
+        if "proxy_settings" in settings:
+            body["proxySettings"] = settings["proxy_settings"]
+        async with httpx.AsyncClient(timeout=30) as client:
+            if self._ca_bundle is None:
+                response = await client.get(self.ca_url)
+                response.raise_for_status()
+                self._ca_bundle = response.text
+            response = await client.post(
+                self.mint_url,
+                json=body,
+                auth=(os.environ["EV_APP_UUID"], os.environ["EV_API_KEY"]),
+            )
+        # The response body carries the proxy password, so it is never logged.
+        if response.is_error:
+            raise RuntimeError(f"Evervault mint failed with HTTP {response.status_code}")
+        return response.json()["proxyConfiguration"]
+
+    async def create(self, params: dict[str, Any]) -> Session:
+        from harness.environment import RUN_ID_ENV, proxy_prefix
+
+        browser_params = dict(params)
+        proxy = await self._mint(browser_params.pop("evervault"))
+        run_id = os.environ.get(RUN_ID_ENV) or "local"
+        async with AsyncKernel() as client:
+            kernel_proxy = await client.proxies.create(
+                type="custom",
+                protocol="https",
+                name=f"{proxy_prefix(run_id)}evervault-{uuid.uuid4().hex[:12]}",
+                config={
+                    "host": proxy["hostname"],
+                    "port": proxy["port"],
+                    "username": proxy["username"],
+                    "password": proxy["password"],
+                    "ca_bundle": self._ca_bundle,
+                },
+            )
+            try:
+                browser = await client.browsers.create(**browser_params, proxy_id=kernel_proxy.id)
+            except Exception:
+                await client.proxies.delete(kernel_proxy.id)
+                raise
+        self._proxies[browser.session_id] = kernel_proxy.id
+        return Session(browser.session_id, browser.cdp_ws_url)
+
+    async def release(self, session_id: str) -> None:
+        # The browser goes first: without its proxy it would reach sites directly.
+        async with AsyncKernel() as client:
+            await client.browsers.delete_by_id(session_id)
+            proxy_id = self._proxies.pop(session_id, None)
+            if proxy_id is not None:
+                await client.proxies.delete(proxy_id)
 
 
 class HttpProvider(Provider):
@@ -131,6 +211,7 @@ class AnchorProvider(HttpProvider):
 
 PROVIDERS: dict[str, Provider] = {
     "kernel": KernelProvider(),
+    "kernel-evervault": KernelEvervaultProvider(),
     "browserbase": BrowserbaseProvider(),
     "steel": SteelProvider(),
     "hyperbrowser": HyperbrowserProvider(),
