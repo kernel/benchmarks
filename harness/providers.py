@@ -35,19 +35,50 @@ class Provider:
 
 
 class KernelProvider(Provider):
+    """A Kernel browser. A `proxy_create` param, a POST /proxies body, creates a
+    proxy for the session and deletes it after the browser, as in
+    harness.environment."""
+
     env = ("KERNEL_API_KEY",)
 
-    async def create(self, params: dict[str, Any]) -> Session:
-        async with AsyncKernel() as client:
+    def __init__(self) -> None:
+        self._proxies: dict[str, str] = {}
+
+    async def _create_browser(
+        self, client: AsyncKernel, params: dict[str, Any], proxy: dict[str, Any] | None
+    ) -> Session:
+        from harness.environment import RUN_ID_ENV, proxy_prefix
+
+        if proxy is None:
             browser = await client.browsers.create(**params)
+            return Session(browser.session_id, browser.cdp_ws_url)
+        run_id = os.environ.get(RUN_ID_ENV) or "local"
+        name = f"{proxy_prefix(run_id)}{uuid.uuid4().hex[:12]}"
+        kernel_proxy = await client.proxies.create(**proxy, name=name)
+        try:
+            browser = await client.browsers.create(**params, proxy_id=kernel_proxy.id)
+        except Exception:
+            await client.proxies.delete(kernel_proxy.id)
+            raise
+        self._proxies[browser.session_id] = kernel_proxy.id
         return Session(browser.session_id, browser.cdp_ws_url)
 
+    async def create(self, params: dict[str, Any]) -> Session:
+        params = dict(params)
+        proxy = params.pop("proxy_create", None)
+        async with AsyncKernel() as client:
+            return await self._create_browser(client, params, proxy)
+
     async def release(self, session_id: str) -> None:
+        # The browser goes first: without its proxy it would reach sites directly.
         async with AsyncKernel() as client:
             await client.browsers.delete_by_id(session_id)
+            proxy_id = self._proxies.pop(session_id, None)
+            if proxy_id is not None:
+                await client.proxies.delete(proxy_id)
 
 
-class KernelEvervaultProvider(Provider):
+class KernelEvervaultProvider(KernelProvider):
     """A Kernel browser whose whole session goes through Evervault's browser proxy.
 
     Each session mints its own Evervault Browser Tokens session, which carries
@@ -56,7 +87,9 @@ class KernelEvervaultProvider(Provider):
     placeholder credential: the session is only used for its proxy, and no
     real value is ever revealed. `params` holds the Kernel browser create
     params, plus an `evervault` table with the mint's `ttl`, the `hosts` it
-    may reveal to, and optionally `proxy_settings` for Evervault's egress.
+    may reveal to, optionally `relay_host` to use another region's relay than
+    the one the mint returns (the credentials work on any), and optionally
+    `proxy_settings` for Evervault's egress.
     """
 
     env = ("KERNEL_API_KEY", "EV_APP_UUID", "EV_API_KEY")
@@ -64,8 +97,8 @@ class KernelEvervaultProvider(Provider):
     ca_url = "https://ca.evervault.com"
 
     def __init__(self) -> None:
+        super().__init__()
         self._ca_bundle: str | None = None
-        self._proxies: dict[str, str] = {}
 
     async def _mint(self, settings: dict[str, Any]) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -91,39 +124,20 @@ class KernelEvervaultProvider(Provider):
         return response.json()["proxyConfiguration"]
 
     async def create(self, params: dict[str, Any]) -> Session:
-        from harness.environment import RUN_ID_ENV, proxy_prefix
-
         browser_params = dict(params)
-        proxy = await self._mint(browser_params.pop("evervault"))
-        run_id = os.environ.get(RUN_ID_ENV) or "local"
+        settings = browser_params.pop("evervault")
+        proxy = await self._mint(settings)
+        config = {
+            "host": settings.get("relay_host") or proxy["hostname"],
+            "port": proxy["port"],
+            "username": proxy["username"],
+            "password": proxy["password"],
+            "ca_bundle": self._ca_bundle,
+        }
         async with AsyncKernel() as client:
-            kernel_proxy = await client.proxies.create(
-                type="custom",
-                protocol="https",
-                name=f"{proxy_prefix(run_id)}evervault-{uuid.uuid4().hex[:12]}",
-                config={
-                    "host": proxy["hostname"],
-                    "port": proxy["port"],
-                    "username": proxy["username"],
-                    "password": proxy["password"],
-                    "ca_bundle": self._ca_bundle,
-                },
+            return await self._create_browser(
+                client, browser_params, {"type": "custom", "protocol": "https", "config": config}
             )
-            try:
-                browser = await client.browsers.create(**browser_params, proxy_id=kernel_proxy.id)
-            except Exception:
-                await client.proxies.delete(kernel_proxy.id)
-                raise
-        self._proxies[browser.session_id] = kernel_proxy.id
-        return Session(browser.session_id, browser.cdp_ws_url)
-
-    async def release(self, session_id: str) -> None:
-        # The browser goes first: without its proxy it would reach sites directly.
-        async with AsyncKernel() as client:
-            await client.browsers.delete_by_id(session_id)
-            proxy_id = self._proxies.pop(session_id, None)
-            if proxy_id is not None:
-                await client.proxies.delete(proxy_id)
 
 
 class HttpProvider(Provider):

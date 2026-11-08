@@ -1,0 +1,23 @@
+# Same as codex-pw-kernel-evervault, but through Evervault's EU (Ireland)
+# relay, for sites that serve European markets.
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+environment = "remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "kernel-evervault"
+
+[browser.config.params]
+stealth = true
+timeout_seconds = 1800
+
+# See codex-pw-kernel-evervault for the TTL.
+[browser.config.params.evervault]
+ttl = 900
+hosts = ["checkout-test.adyen.com"]
+relay_host = "eu-ie.browser.relay.evervault.app"

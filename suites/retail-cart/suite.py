@@ -13,6 +13,10 @@ counted apart from other failures. The verifier then opens the site's cart
 itself (`cart_url`, or `cart_api` fetched from the page) and records
 `cart_verified` when it lists the item (`cart_match`, a case-insensitive
 regular expression).
+
+Tasks come from tasks.toml, or from another file of the same shape given as
+the `tasks` suite arg. A task's optional `country` is recorded in its
+task.toml metadata, where the `geo` configurator reads it.
 """
 
 from __future__ import annotations
@@ -52,6 +56,7 @@ class Task:
     cart_match: str
     cart_url: str | None = None
     cart_api: str | None = None
+    country: str | None = None
     timeout_sec: int = 900
 
 
@@ -59,12 +64,12 @@ def preflight() -> None:
     """Nothing to check: tasks need only the Kernel browser Harbor creates."""
 
 
-def load_tasks() -> list[Task]:
-    return [Task(**entry) for entry in tomllib.loads((HERE / "tasks.toml").read_text())["tasks"]]
+def load_tasks(path: Path = HERE / "tasks.toml") -> list[Task]:
+    return [Task(**entry) for entry in tomllib.loads(path.read_text())["tasks"]]
 
 
-def generate(task_ids: list[str] | None, out_dir: Path) -> list[Path]:
-    tasks = load_tasks()
+def generate(task_ids: list[str] | None, out_dir: Path, tasks: str | None = None) -> list[Path]:
+    tasks = load_tasks(Path(tasks)) if tasks else load_tasks()
     if task_ids:
         known = {task.id: task for task in tasks}
         missing = [task_id for task_id in task_ids if task_id not in known]
@@ -108,6 +113,8 @@ def _write(task: Task, task_dir: Path) -> Path:
     config["source"] = "retail-cart"
     config["task"] = {"name": f"retail-cart/{task.id}", "keywords": [task.site]}
     config["metadata"] = {"site": task.site, "start_url": task.start_url}
+    if task.country:
+        config["metadata"]["country"] = task.country
     config["environment"] = {
         "build_timeout_sec": 1200.0,
         "network_mode": "public",

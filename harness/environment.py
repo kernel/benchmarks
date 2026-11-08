@@ -24,7 +24,9 @@ commands then run as root. A trial where either fails fails with
 `RemoteBrowserEnvironment` instead runs the task container on local Docker
 and drives a browser from any provider in `harness.providers` over CDP, so
 providers are compared with the same agent, tools and container. Its config
-file names the `provider` and that provider's session create `params`.
+file names the `provider` and that provider's session create `params`. A
+`proxy_create` entry, as a configurator writes it, is passed on in `params`;
+only the Kernel providers accept it.
 """
 
 from __future__ import annotations
@@ -232,7 +234,9 @@ class RemoteBrowserEnvironment(DockerEnvironment):
         config = json.loads((Path(environment_dir) / CONFIG_FILE).read_text())
         self._provider_name: str = config["provider"]
         self._provider = providers.get(self._provider_name)
-        self._create_params: dict[str, Any] = config.get("params") or {}
+        self._create_params: dict[str, Any] = dict(config.get("params") or {})
+        if PROXY_CREATE in config:
+            self._create_params[PROXY_CREATE] = config[PROXY_CREATE]
         self._browser_session_id: str | None = None
         super().__init__(environment_dir, *args, **kwargs)
 

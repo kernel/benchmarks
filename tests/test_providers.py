@@ -178,3 +178,17 @@ def test_kernel_evervault_mint_failure_does_not_leak_the_body(monkeypatch):
     with pytest.raises(RuntimeError, match="HTTP 403") as error:
         asyncio.run(providers.KernelEvervaultProvider().create({"evervault": {"hosts": ["a"]}}))
     assert "secret" not in str(error.value)
+
+
+def test_kernel_creates_and_deletes_a_proxy_per_session(monkeypatch):
+    calls = []
+    monkeypatch.setattr(providers, "AsyncKernel", lambda: _FakeKernel(calls))
+    provider = providers.KernelProvider()
+    proxy = {"type": "residential", "config": {"country": "GB"}}
+
+    session = asyncio.run(provider.create({"stealth": True, "proxy_create": proxy}))
+    asyncio.run(provider.release(session.id))
+
+    assert calls[0][0] == "proxy.create" and calls[0][1]["config"] == {"country": "GB"}
+    assert calls[1] == ("browser.create", {"stealth": True, "proxy_id": "p1"})
+    assert calls[2:] == [("browser.delete", "b1"), ("proxy.delete", "p1")]

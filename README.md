@@ -162,6 +162,19 @@ uv run bench run retail-cart-providers --attempts 10 --concurrency 4
 
 All arms' task containers run on one machine, so keep `--concurrency` low on a GitHub runner.
 
+### `retail-cart-geo`
+
+The `retail-cart` tasks reached from each site's own market, for sites outside the US. Tasks need a `country`, so pass a task file of the same shape as `suites/retail-cart/tasks.toml` with `--suite-arg tasks=<path>`.
+
+| Arm | Browser |
+|---|---|
+| `codex-pw-kernel-geo` | Kernel, `stealth: true`, with a new residential proxy in the task's country per trial (the `geo` configurator) |
+| `codex-pw-kernel-evervault-eu` | Kernel, `stealth: true`, with the whole session sent through Evervault's EU (Ireland) relay |
+
+```bash
+uv run bench run retail-cart-geo --suite-arg tasks=path/to/tasks.toml --attempts 5
+```
+
 ## Extending
 
 ### Add an arm
