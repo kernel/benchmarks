@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Record browser tool usage from the stdio call log, independently of agent transcripts."""
+"""Record browser tool usage from the stdio call log, independently of agent transcripts.
+
+Adds `kernel_mcp_valid` to the task's rewards. In the browser-approach arms a
+trial that is not valid also gets zero reward. A call the proxy rejected never
+reached the browser, so it is counted and not held against the trial.
+"""
 
 from __future__ import annotations
 
@@ -36,7 +41,8 @@ def check_calls(
     calls: list[dict[str, Any]], enabled: list[str], session: str | None, approach: str | None
 ) -> dict[str, Any]:
     allowed = {TOOLS[name] for name in enabled if name in TOOLS}
-    browser_calls = [call for call in calls if call.get("tool") in allowed]
+    forwarded = [call for call in calls if not call.get("rejected")]
+    browser_calls = [call for call in forwarded if call.get("tool") in allowed]
     sessions = {(call.get("arguments") or {}).get("session_id") for call in browser_calls}
     invoked = any(
         (call.get("tool") == "webmcp" and (call.get("arguments") or {}).get("action") == "invoke")
@@ -48,9 +54,7 @@ def check_calls(
         "used_assigned_browser": bool(session) and sessions == {session},
     }
     if approach:
-        checks["allowed_tools_only"] = all(
-            call.get("tool") in allowed and not call.get("rejected") for call in calls
-        )
+        checks["allowed_tools_only"] = all(call.get("tool") in allowed for call in forwarded)
     if approach == "playwright":
         checks["no_webmcp"] = not any(
             re.search(
@@ -67,6 +71,7 @@ def check_calls(
         "browser_calls": len(browser_calls),
         "browser_call_ms": sum(call.get("duration_ms") or 0 for call in browser_calls),
         "browser_call_errors": sum(bool(call.get("is_error")) for call in browser_calls),
+        "rejected_calls": len(calls) - len(forwarded),
         "webmcp_invoked": bool(invoked),
     }
 
@@ -91,6 +96,7 @@ def main() -> int:
         rewards["kernel_mcp_valid"] = float(result["valid"])
         if approach:
             rewards["webmcp_invoked"] = float(result["webmcp_invoked"])
+            rewards["call_rejected"] = float(result["rejected_calls"] > 0)
             if not result["valid"]:
                 rewards["reward"] = 0.0
         reward_path.write_text(json.dumps(rewards, indent=2))

@@ -202,8 +202,23 @@ def test_call_checks_detect_session_tool_and_playwright_violations():
         violation = {**call, "arguments": {"session_id": "s", "code": code}}
         assert not check([violation], ["playwright"], "s", "playwright")["valid"]
     webmcp = {"tool": "webmcp", "arguments": {"session_id": "s", "action": "invoke"}}
-    result = check([webmcp], ["playwright", "repl", "computer", "webmcp"], "s", "treatment")
+    hybrid = ["playwright", "repl", "computer", "webmcp"]
+    result = check([webmcp], hybrid, "s", "treatment")
     assert result["valid"] and result["webmcp_invoked"]
+    # Calls the proxy rejected never reached the browser: counted, not invalidating.
+    rejected = [
+        {"tool": "webmcp", "arguments": {"session_id": "s", "action": "list_custom"}},
+        {"tool": "execute_playwright_code", "arguments": {"code": "return 1"}},
+        {"tool": "manage_browsers", "arguments": {"session_id": "s"}},
+    ]
+    result = check(
+        [{**entry, "rejected": True} for entry in rejected] + [call], hybrid, "s", "control"
+    )
+    assert result["valid"] and result["rejected_calls"] == 3 and result["browser_calls"] == 1
+    only_rejected = check([{**rejected[1], "rejected": True}], hybrid, "s", "control")
+    assert not only_rejected["valid"]
+    blocked = {**call, "arguments": {"session_id": "s", "code": "return await webmcp.listTools()"}}
+    assert check([{**blocked, "rejected": True}, call], ["playwright"], "s", "playwright")["valid"]
 
 
 @pytest.mark.parametrize("approach,expected_reward", [("playwright", 0), (None, 1)])
@@ -248,6 +263,7 @@ for line in sys.stdin:
             ("execute_playwright_code", {"session_id": "other"}),
             ("webmcp", {"session_id": "s", "action": "add_custom"}),
             ("webmcp", {"session_id": "s", "action": "list"}),
+            ("execute_playwright_code", {"session_id": "s", "code": "await webmcp.listTools()"}),
         ],
         2,
     ):
@@ -280,6 +296,56 @@ for line in sys.stdin:
     assert [tool["name"] for tool in responses[1]["tools"]] == ["execute_playwright_code", "webmcp"]
     assert responses[2]["content"][0]["text"] == responses[6]["content"][0]["text"] == "forwarded"
     assert all(responses[index]["isError"] for index in (3, 4, 5))
+    assert "session-id" in responses[4]["content"][0]["text"]
+    assert "list and invoke" in responses[5]["content"][0]["text"]
+    # WebMCP from code is forwarded here because this arm has the webmcp tool.
+    assert responses[7]["content"][0]["text"] == "forwarded"
     calls = list(map(json.loads, log.read_text().splitlines()))
-    assert len(calls) == 5
+    assert len(calls) == 6
     assert sum(call["rejected"] for call in calls) == 3
+
+
+def test_call_proxy_blocks_webmcp_from_code_in_the_playwright_arm(tmp_path):
+    server = tmp_path / "server.py"
+    server.write_text("""import sys, json
+for line in sys.stdin:
+    request = json.loads(line)
+    print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {"content": [{"type": "text", "text": "forwarded"}]}}), flush=True)
+""")
+    codes = ["return await webmcp.listTools()", "return await page.title()"]
+    requests = [
+        {
+            "jsonrpc": "2.0",
+            "id": index,
+            "method": "tools/call",
+            "params": {
+                "name": "execute_playwright_code",
+                "arguments": {"session_id": "s", "code": code},
+            },
+        }
+        for index, code in enumerate(codes)
+    ]
+    log = tmp_path / "calls.jsonl"
+    result = subprocess.run(
+        [sys.executable, str(BIN / "mcp-call-log"), str(log), sys.executable, str(server)],
+        input="\n".join(json.dumps(request) for request in requests) + "\n",
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env={
+            **os.environ,
+            "KERNEL_BENCH_ALLOWED_TOOLS": "execute_playwright_code",
+            "KERNEL_SESSION_ID": "s",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    responses = {
+        response["id"]: response["result"]
+        for response in map(json.loads, result.stdout.splitlines())
+    }
+    assert responses[0]["isError"] and "WebMCP" in responses[0]["content"][0]["text"]
+    assert responses[1]["content"][0]["text"] == "forwarded"
+    calls = list(map(json.loads, log.read_text().splitlines()))
+    assert [call["rejected"] for call in calls] == [True, False]
+    check = runpy.run_path(str(BIN / "kernel-mcp-verify"))["check_calls"]
+    assert check(calls, ["playwright"], "s", "playwright")["valid"]

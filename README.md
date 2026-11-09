@@ -136,9 +136,10 @@ All three use the same selected runner/model (Codex by default), stealth browser
 initial page, fixtures and grading. Control and treatment have identical browser instructions; the
 Playwright-only instruction prohibits WebMCP, REPL, computer actions, raw CDP and direct HTTP.
 The stdio proxy filters the advertised tools and rejects calls outside the arm's allowlist,
-calls on another session, and WebMCP registration/removal. Playwright WebMCP calls detected
-in code also invalidate the trial. This is not an arbitrary-code sandbox: instructions and
-trajectory review still matter for calls that bypass MCP.
+calls on another session, WebMCP registration/removal and, in the Playwright-only arm, code
+that calls WebMCP. A rejected call never reaches the browser, so it is reported and does not
+fail the trial. This is not an arbitrary-code sandbox: instructions and trajectory review
+still matter for calls that bypass MCP.
 
 The catalog, task definitions, eligible tool batches and grader come from one exact
 `kernel/xwebmcp` revision in [suites/public-web/source.toml](suites/public-web/source.toml).
@@ -195,8 +196,8 @@ pairs; do not interpret the per-arm medians as a paired speedup or compare diffe
 The agent calls `finalize` with its JSON answer. The verifier applies the pinned answer
 schema/rules and, for the cart task, reads the final page independently and compares it to
 the answer. The rules and the grader are uploaded only for verification, so the agent's
-container never holds them. A success claim alone is insufficient, and an invalid browser toolset yields
-zero reward. The report separates page-checked passes from answer-rule passes: shape/range
+container never holds them. A success claim alone is insufficient, and a trial with no
+permitted browser call gets zero reward. The report separates page-checked passes from answer-rule passes: shape/range
 checks and even pinned rules do not verify every returned fact. Audit examples before
 publishing correctness claims; this catalog is a screening set, not a held-out validation set.
 

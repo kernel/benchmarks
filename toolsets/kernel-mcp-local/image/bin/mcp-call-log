@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -13,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+WEBMCP_IN_CODE = re.compile(r"\b(?:listTools|invokeTool)\s*\(")
+
 
 def parse(line: bytes) -> dict[str, Any]:
     try:
@@ -20,6 +23,21 @@ def parse(line: bytes) -> dict[str, Any]:
     except ValueError:
         return {}
     return message if isinstance(message, dict) else {}
+
+
+def rejection(
+    name: Any, arguments: dict[str, Any], allowed: set[str], session: str | None
+) -> str | None:
+    """Why the arm does not permit this call, or None when it may reach the server."""
+    if name not in allowed:
+        return "This arm does not provide that tool. Use only the listed browser tools."
+    if not session or arguments.get("session_id") != session:
+        return "Pass the session ID in /run/kernel-mcp/session-id as session_id."
+    if name == "webmcp" and arguments.get("action") not in {"list", "invoke"}:
+        return "This arm permits only the list and invoke actions of webmcp."
+    if "webmcp" not in allowed and WEBMCP_IN_CODE.search(str(arguments.get("code") or "")):
+        return "This arm does not permit WebMCP. Use Playwright DOM/UI actions instead."
+    return None
 
 
 def main() -> int:
@@ -69,28 +87,20 @@ def main() -> int:
                 params = message.get("params") or {}
                 started, started_at = time.monotonic(), datetime.now(UTC).isoformat()
                 if method == "tools/call" and allowed:
-                    arguments = params.get("arguments") or {}
-                    forbidden = (
-                        params.get("name") not in allowed
-                        or not session
-                        or arguments.get("session_id") != session
-                        or (
-                            params.get("name") == "webmcp"
-                            and arguments.get("action") not in {"list", "invoke"}
-                        )
+                    arguments = params.get("arguments")
+                    reason = rejection(
+                        params.get("name"),
+                        arguments if isinstance(arguments, dict) else {},
+                        allowed,
+                        session,
                     )
-                    if forbidden:
+                    if reason:
                         response = {
                             "jsonrpc": "2.0",
                             "id": message.get("id"),
                             "result": {
                                 "isError": True,
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": "This arm permits only its listed browser tools on the assigned session; WebMCP is list/invoke only.",
-                                    }
-                                ],
+                                "content": [{"type": "text", "text": reason}],
                             },
                         }
                         record(params, started, started_at, response, rejected=True)
