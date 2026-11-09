@@ -67,3 +67,9 @@ def test_harbor_command_passes_agent_kwargs_as_json(tmp_path):
     assert "version=0.163.0" in command
     assert "disable_web_search=true" in command
     assert command[command.index("--n-attempts") + 1] == "3"
+
+
+def test_harbor_command_picks_the_arms_environment(tmp_path):
+    arm = Arm(name="a", agent="codex", model="m", toolset="t", environment="remote-browser")
+    command = run.harbor_command(run.PreparedArm(arm, tmp_path, {}), tmp_path, "job", 1)
+    assert command[command.index("--env") + 1] == "harness.environment:RemoteBrowserEnvironment"

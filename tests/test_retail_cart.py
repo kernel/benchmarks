@@ -32,6 +32,19 @@ def test_generate_writes_a_harbor_task(tmp_path):
     assert (task_dir / "environment/bench/finalize-mcp").is_file()
 
 
+def test_tiers_filter_tasks_and_are_recorded(tmp_path):
+    tasks = suite.load_tasks()
+    assert {task.tier for task in tasks} == set(suite.TIERS)
+    hard = [task.id for task in tasks if task.tier == "hard"]
+    task_dirs = suite.generate(None, tmp_path, tiers="hard")
+    assert sorted(path.name for path in task_dirs) == sorted(hard)
+    config = tomllib.loads((task_dirs[0] / "task.toml").read_text())
+    assert config["metadata"]["tier"] == "hard"
+    assert len(suite.generate(None, tmp_path / "all")) == len(tasks)
+    with pytest.raises(SystemExit, match="Unknown tiers: extreme"):
+        suite.generate(None, tmp_path, tiers=["extreme"])
+
+
 def test_unknown_task_is_refused(tmp_path):
     with pytest.raises(SystemExit, match="nope"):
         suite.generate(["nope"], tmp_path)

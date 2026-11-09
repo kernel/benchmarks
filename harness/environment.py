@@ -20,6 +20,13 @@ one at random: Chromium is restarted with them and the page is checked for
 the persona or WebGL renderer they ask for. `vm_setup` is a list of shell
 commands then run as root. A trial where either fails fails with
 `VmSetupError`.
+
+`RemoteBrowserEnvironment` instead runs the task container on local Docker
+and drives a browser from any provider in `harness.providers` over CDP, so
+providers are compared with the same agent, tools and container. Its config
+file names the `provider` and that provider's session create `params`.
+`KernelVmRemoteBrowserEnvironment` does the same with the task container on a
+Kernel VM used only as compute, for machines without Docker.
 """
 
 from __future__ import annotations
@@ -33,14 +40,20 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from harbor.environments.docker.docker import DockerEnvironment
 from harbor.environments.kernel import KernelEnvironment
 from kernel import AsyncKernel, Kernel
+
+from harness import providers
 
 CONFIG_FILE = "kernel-config.json"
 PROXY_CREATE = "proxy_create"
 CHROMIUM_ENV = "chromium_env"
 VM_SETUP = "vm_setup"
 RUN_ID_ENV = "BENCH_RUN_ID"
+# Where the task container finds the remote browser's CDP URL. Agents may not
+# pass their environment on to the MCP servers they launch, so it is a file.
+CDP_URL_FILE = "/run/browser/cdp-url"
 
 
 class ProxyCreationError(RuntimeError):
@@ -49,6 +62,10 @@ class ProxyCreationError(RuntimeError):
 
 class VmSetupError(RuntimeError):
     """The browser's VM could not be set up for the trial before the first page load."""
+
+
+class BrowserCreationError(RuntimeError):
+    """The provider could not create the trial's remote browser."""
 
 
 SUPERVISOR_PROGRAM = """[program:chromium]
@@ -210,3 +227,87 @@ class KernelTaskEnvironment(KernelEnvironment):
                     self._proxy_id = None
                 except Exception as error:
                     self.logger.error(f"Failed to delete Kernel proxy {self._proxy_id}: {error}")
+
+
+class _RemoteBrowser:
+    """Create the trial's browser from the config file's provider, write its CDP
+    URL into the task container, and release it when the trial ends."""
+
+    def _read_remote_config(self, environment_dir: Path) -> None:
+        config = json.loads((Path(environment_dir) / CONFIG_FILE).read_text())
+        self._provider_name: str = config["provider"]
+        self._provider = providers.get(self._provider_name)
+        self._create_params: dict[str, Any] = config.get("params") or {}
+        self._browser_session_id: str | None = None
+
+    async def _attach_remote_browser(self) -> None:
+        try:
+            session = await self._provider.create(self._create_params)
+        except Exception as error:
+            raise BrowserCreationError(
+                f"Could not create a {self._provider_name} browser: {error}"
+            ) from error
+        self._browser_session_id = session.id
+        self.logger.info(f"Created {self._provider_name} browser {session.id}")
+        self._persistent_env.update(
+            {"BROWSER_PROVIDER": self._provider_name, "BROWSER_SESSION_ID": session.id}
+        )
+        directory = os.path.dirname(CDP_URL_FILE)
+        result = await self.exec(
+            f'mkdir -p {directory} && printf %s "$CDP_URL" > {CDP_URL_FILE} && chmod 0644 {CDP_URL_FILE}',
+            env={"CDP_URL": session.cdp_url},
+            user="root",
+        )
+        if result.return_code != 0:
+            raise BrowserCreationError(f"Could not write {CDP_URL_FILE}: {result.stderr}")
+
+    async def _release_remote_browser(self) -> None:
+        if self._browser_session_id is None:
+            return
+        try:
+            await self._provider.release(self._browser_session_id)
+            self._browser_session_id = None
+        except Exception as error:
+            self.logger.error(
+                f"Failed to release {self._provider_name} browser "
+                f"{self._browser_session_id}: {error}"
+            )
+
+
+class RemoteBrowserEnvironment(_RemoteBrowser, DockerEnvironment):
+    """The task container on local Docker, driving the provider's browser over CDP."""
+
+    def __init__(self, environment_dir: Path, *args: Any, **kwargs: Any) -> None:
+        self._read_remote_config(environment_dir)
+        super().__init__(environment_dir, *args, **kwargs)
+
+    async def start(self, force_build: bool) -> None:
+        await super().start(force_build)
+        await self._attach_remote_browser()
+
+    async def stop(self, delete: bool) -> None:
+        try:
+            await super().stop(delete)
+        finally:
+            await self._release_remote_browser()
+
+
+class KernelVmRemoteBrowserEnvironment(_RemoteBrowser, KernelEnvironment):
+    """The task container on a Kernel VM used only as compute (no local Docker
+    needed), driving the provider's browser over CDP like `RemoteBrowserEnvironment`.
+    The VM's own browser is left unused, so a Kernel arm is reached over the
+    network the same way as every other provider."""
+
+    def __init__(self, environment_dir: Path, *args: Any, **kwargs: Any) -> None:
+        self._read_remote_config(environment_dir)
+        super().__init__(environment_dir, *args, **kwargs)
+
+    async def start(self, force_build: bool) -> None:
+        await super().start(force_build)
+        await self._attach_remote_browser()
+
+    async def stop(self, delete: bool) -> None:
+        try:
+            await super().stop(delete)
+        finally:
+            await self._release_remote_browser()

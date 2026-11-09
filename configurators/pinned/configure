@@ -25,7 +25,12 @@ def main() -> int:
     site = tomllib.loads(task["config"]).get("metadata", {}).get("site")
     entry = TABLE["sites"].get(site)
     if entry is None:
-        raise SystemExit(f"No pinned configuration for site {site!r}")
+        # Sites added after the table was measured run on the arm's static config.
+        json.dump(
+            {"browser": {}, "steering": None, "provenance": {"site": site, "pinned": False}},
+            sys.stdout,
+        )
+        return 0
     browser = dict(entry["browser"])
     browser["proxy_create"] = {"type": entry["proxy"], "config": {"country": "US"}}
     persona = entry.get("persona")

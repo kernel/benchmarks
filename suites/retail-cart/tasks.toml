@@ -2,6 +2,10 @@
 # where most bot protection first sees the browser. The verifier opens
 # `cart_url` (or fetches `cart_api` from the page) and checks it lists the
 # item with `cart_match`, a case-insensitive regular expression.
+#
+# `tier` groups the sites (default `standard`): `easy` sites have little or no
+# bot protection and act as controls; `hard` sites block most automated
+# browsers. Run one tier with `--suite-arg tiers=hard`.
 
 [[tasks]]
 id = "amazon-aa-batteries"
@@ -92,12 +96,63 @@ cart_url = "https://www.dickssportinggoods.com/OrderItemDisplay"
 cart_match = 'HydroJug'
 
 [[tasks]]
+id = "zoro-nitrile-gloves"
+site = "zoro.com"
+start_url = "https://www.zoro.com/"
+item = "a box of disposable nitrile gloves, size large"
+cart_url = "https://www.zoro.com/cart"
+cart_match = 'nitrile'
+
+# Standard: protected sites, added for vendor coverage. Wayfair is hard: its
+# press-and-hold check stopped Kernel with the macOS fingerprint on first try.
+
+[[tasks]]
+id = "wayfair-hangers"
+site = "wayfair.com"
+start_url = "https://www.wayfair.com/"
+item = "a pack of clothes hangers that can be shipped"
+cart_url = "https://www.wayfair.com/v/checkout/basket/show"
+cart_match = 'hanger'
+tier = "hard"
+
+[[tasks]]
+id = "zara-socks"
+site = "zara.com"
+start_url = "https://www.zara.com/us/"
+item = "one pack of socks"
+cart_url = "https://www.zara.com/us/en/shop/cart"
+cart_match = 'sock'
+
+# Easy: controls with little bot protection.
+
+[[tasks]]
+id = "ikea-side-table"
+site = "ikea.com"
+start_url = "https://www.ikea.com/us/en/"
+item = "one LACK side table that can be delivered"
+cart_url = "https://www.ikea.com/us/en/shoppingcart/"
+cart_match = 'LACK\b.{0,80}side table|side table.{0,80}LACK\b'
+tier = "easy"
+
+[[tasks]]
+id = "gymshark-socks"
+site = "gymshark.com"
+start_url = "https://www.gymshark.com/"
+item = "one pack of Gymshark crew socks"
+cart_url = "https://www.gymshark.com/cart"
+cart_match = 'sock'
+tier = "easy"
+
+# Hard: sites that block most automated browsers.
+
+[[tasks]]
 id = "mouser-usb-c-receptacle"
 site = "mouser.com"
 start_url = "https://www.mouser.com/"
 item = "one GCT USB4105-GF-A USB-C receptacle"
 cart_url = "https://www.mouser.com/en/Cart/"
 cart_match = 'USB4105'
+tier = "hard"
 
 [[tasks]]
 id = "newark-aa-batteries"
@@ -106,14 +161,7 @@ start_url = "https://www.newark.com/"
 item = "a pack of AA alkaline batteries"
 cart_url = "https://www.newark.com/webapp/wcs/stores/servlet/OrderItemDisplay?storeId=10194&catalogId=15003&langId=-1"
 cart_match = 'alkaline'
-
-[[tasks]]
-id = "zoro-nitrile-gloves"
-site = "zoro.com"
-start_url = "https://www.zoro.com/"
-item = "a box of disposable nitrile gloves, size large"
-cart_url = "https://www.zoro.com/cart"
-cart_match = 'nitrile'
+tier = "hard"
 
 [[tasks]]
 id = "guitarcenter-picks"
@@ -122,6 +170,7 @@ start_url = "https://www.guitarcenter.com/"
 item = "a 12-pack of Fender 351 celluloid medium guitar picks"
 cart_api = "https://www.guitarcenter.com/rest/model/atg/commerce/ShoppingCartActor/cartRedesignNew?saveForLaterPage=1&SPA=true"
 cart_match = '\b351\b'
+tier = "hard"
 
 [[tasks]]
 id = "wbmason-sticky-notes"
@@ -130,3 +179,77 @@ start_url = "https://www.wbmason.com/"
 item = "a pack of Post-it 3 x 3 in canary yellow sticky notes"
 cart_url = "https://www.wbmason.com/shopping-cart"
 cart_match = 'Post-it|sticky note'
+tier = "hard"
+
+[[tasks]]
+id = "adidas-socks"
+site = "adidas.com"
+start_url = "https://www.adidas.com/us"
+item = "one pack of adidas crew socks"
+cart_url = "https://www.adidas.com/us/cart"
+cart_match = 'sock'
+tier = "hard"
+
+[[tasks]]
+id = "bestbuy-hdmi-cable"
+site = "bestbuy.com"
+start_url = "https://www.bestbuy.com/"
+item = "an Insignia HDMI cable that can be shipped"
+cart_url = "https://www.bestbuy.com/cart"
+cart_match = 'Insignia.{0,120}HDMI|HDMI.{0,120}Insignia'
+tier = "hard"
+
+[[tasks]]
+id = "sephora-niacinamide-serum"
+site = "sephora.com"
+start_url = "https://www.sephora.com/"
+item = "one The Ordinary Niacinamide 10% + Zinc 1% serum that can be shipped"
+cart_url = "https://www.sephora.com/basket"
+# Specific enough not to match the basket page's promotions and recommendations.
+cart_match = 'Niacinamide 10%\s*\+\s*Zinc'
+tier = "hard"
+
+[[tasks]]
+id = "nike-socks"
+site = "nike.com"
+start_url = "https://www.nike.com/"
+item = "one pack of Nike Everyday crew socks"
+cart_url = "https://www.nike.com/cart"
+cart_match = 'Everyday|sock'
+tier = "hard"
+
+[[tasks]]
+id = "footlocker-socks"
+site = "footlocker.com"
+start_url = "https://www.footlocker.com/"
+item = "one pack of crew socks"
+cart_url = "https://www.footlocker.com/cart"
+cart_match = 'sock'
+tier = "hard"
+
+[[tasks]]
+id = "chewy-dental-treats"
+site = "chewy.com"
+start_url = "https://www.chewy.com/"
+item = "a bag or box of Greenies dental dog treats"
+cart_url = "https://www.chewy.com/app/cart"
+cart_match = 'Greenies'
+tier = "hard"
+
+[[tasks]]
+id = "bhphoto-microsd"
+site = "bhphotovideo.com"
+start_url = "https://www.bhphotovideo.com/"
+item = "a SanDisk microSD memory card"
+cart_url = "https://www.bhphotovideo.com/find/cart.jsp"
+cart_match = 'SanDisk'
+tier = "hard"
+
+[[tasks]]
+id = "kohls-bath-towel"
+site = "kohls.com"
+start_url = "https://www.kohls.com/"
+item = "one bath towel that can be shipped"
+cart_url = "https://www.kohls.com/checkout/shopping_cart.jsp"
+cart_match = 'towel'
+tier = "hard"

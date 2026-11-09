@@ -53,6 +53,9 @@ class Task:
     cart_url: str | None = None
     cart_api: str | None = None
     timeout_sec: int = 900
+    # easy: little or no bot protection, a control. standard: protected sites
+    # most browsers get through. hard: sites that block most automated browsers.
+    tier: str = "standard"
 
 
 def preflight() -> None:
@@ -63,8 +66,24 @@ def load_tasks() -> list[Task]:
     return [Task(**entry) for entry in tomllib.loads((HERE / "tasks.toml").read_text())["tasks"]]
 
 
-def generate(task_ids: list[str] | None, out_dir: Path) -> list[Path]:
+TIERS = ("easy", "standard", "hard")
+
+
+def generate(
+    task_ids: list[str] | None, out_dir: Path, tiers: list[str] | str | None = None
+) -> list[Path]:
+    """Write the tasks with these ids, or every task in `tiers` (default: all tiers).
+
+    `tiers` is a list or a comma-separated string, so `--suite-arg tiers=hard` works.
+    """
     tasks = load_tasks()
+    if isinstance(tiers, str):
+        tiers = [tier.strip() for tier in tiers.split(",") if tier.strip()]
+    if tiers:
+        unknown = sorted(set(tiers) - set(TIERS))
+        if unknown:
+            raise SystemExit(f"Unknown tiers: {', '.join(unknown)}; known: {', '.join(TIERS)}")
+        tasks = [task for task in tasks if task.tier in tiers]
     if task_ids:
         known = {task.id: task for task in tasks}
         missing = [task_id for task_id in task_ids if task_id not in known]
@@ -106,8 +125,8 @@ def _write(task: Task, task_dir: Path) -> Path:
     config = tomlkit.document()
     config["schema_version"] = "1.3"
     config["source"] = "retail-cart"
-    config["task"] = {"name": f"retail-cart/{task.id}", "keywords": [task.site]}
-    config["metadata"] = {"site": task.site, "start_url": task.start_url}
+    config["task"] = {"name": f"retail-cart/{task.id}", "keywords": [task.site, task.tier]}
+    config["metadata"] = {"site": task.site, "start_url": task.start_url, "tier": task.tier}
     config["environment"] = {
         "build_timeout_sec": 1200.0,
         "network_mode": "public",

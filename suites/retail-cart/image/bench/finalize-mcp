@@ -35,8 +35,8 @@ OUTCOMES = {
         "to load."
     ),
     "kernel_error": (
-        "the Kernel browser or its tools kept you from finishing: the browser REPL or the "
-        "browser itself errored, hung, or crashed."
+        "the browser or its tools kept you from finishing: the browser tools or the browser "
+        "itself errored, hung, or crashed."
     ),
 }
 

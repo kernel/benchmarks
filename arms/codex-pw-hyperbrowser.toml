@@ -1,0 +1,14 @@
+# Codex driving a Hyperbrowser browser through Playwright MCP over CDP, with
+# Hyperbrowser's anti-bot settings: stealth, proxy and CAPTCHA solving.
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+environment = "remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "hyperbrowser"
+params = { useStealth = true, useProxy = true, solveCaptchas = true, timeoutMinutes = 45 }

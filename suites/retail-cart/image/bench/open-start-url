@@ -9,10 +9,15 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+# Written by the remote-browser environment; absent in a Kernel browser's VM.
+CDP_URL_FILE = Path("/run/browser/cdp-url")
 
 CODE = """
 await page.goto(%s, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -22,10 +27,29 @@ return page.url();
 
 
 def main(url: str) -> int:
+    if CDP_URL_FILE.exists():
+        output = subprocess.run(
+            ["/opt/bench/cdp-execute", "90"],
+            input=CODE % json.dumps(url),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        result = json.loads(output.stdout)
+    else:
+        result = execute_with_kernel(CODE % json.dumps(url))
+    if not result.get("success"):
+        print(f"Could not open {url}: {result.get('error')}", file=sys.stderr)
+        return 1
+    print(f"Opened {result.get('result')}")
+    return 0
+
+
+def execute_with_kernel(code: str) -> dict:
     base = (os.environ.get("KERNEL_BASE_URL") or "https://api.onkernel.com").rstrip("/")
     request = urllib.request.Request(
         f"{base}/browsers/{os.environ['KERNEL_SESSION_ID']}/playwright/execute",
-        data=json.dumps({"code": CODE % json.dumps(url), "timeout_sec": 90}).encode(),
+        data=json.dumps({"code": code, "timeout_sec": 90}).encode(),
         headers={
             "Authorization": f"Bearer {os.environ['KERNEL_API_KEY']}",
             "Content-Type": "application/json",
@@ -44,11 +68,7 @@ def main(url: str) -> int:
             if attempt == 4:
                 raise
             time.sleep(2 * (attempt + 1))
-    if not result.get("success"):
-        print(f"Could not open {url}: {result.get('error')}", file=sys.stderr)
-        return 1
-    print(f"Opened {result.get('result')}")
-    return 0
+    return result
 
 
 if __name__ == "__main__":

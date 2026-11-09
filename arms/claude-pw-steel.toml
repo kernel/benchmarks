@@ -1,0 +1,17 @@
+# Claude Code driving a steel browser through Playwright MCP over CDP, the
+# same agent, tools and task container as every claude-pw-* arm. The container
+# runs on a Kernel VM used only as compute; the browser is a separate session.
+# Browser: Steel's managed residential proxy and CAPTCHA solving. 15-minute sessions: the
+# Launch plan's maximum (other arms get 30), so a long trial can lose its browser.
+agent = "claude-code"
+model = "claude-sonnet-5-5"
+agent_version = "2.1.238"
+toolset = "playwright-mcp"
+environment = "kernel-vm-remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "steel"
+params = { useProxy = true, solveCaptcha = true, timeout = 900000 }

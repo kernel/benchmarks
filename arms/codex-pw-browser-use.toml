@@ -1,0 +1,14 @@
+# Codex driving a Browser Use cloud browser through Playwright MCP over CDP, with
+# Browser Use's managed US proxy.
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+environment = "remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "browser-use"
+params = { proxyCountryCode = "us", timeout = 45 }
