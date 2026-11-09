@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Choose browser settings from Kernel's config registry for the task's own site.
+
+The task's `metadata.start_url` is looked up directly, so no model has to name
+the site, and proxies are limited to the task's `metadata.country`. The
+recommendation of the project's latest analysis of that exact target is
+preferred, since an analysis started with `resolve` reaches global knowledge
+later; otherwise the global recommendation is used. A recommendation's
+browser settings and proxy `create` body are used as given.
+A site with no recommendation falls back to `fallback`, by default a stealth
+browser with a residential proxy in the task's country, so those trials match
+the `geo` configurator. The registry's guidance becomes steering when
+`steering` is true.
+
+stdin:  {"task": {"config": str, "instruction": str}, "args": {"steering": bool}}
+stdout: {"browser": {...}, "steering": str | null, "provenance": {...}}
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import tomllib
+from typing import Any
+
+from kernel import Kernel
+
+BROWSER_KEYS = ("stealth", "gpu", "headless", "viewport")
+
+
+def project_recommendation(client: Kernel, target: str) -> dict[str, Any] | None:
+    host = target.split("/")[2]
+    for summary in client.config_registry.list(search=host):
+        if summary.target == target and summary.analysis_status == "completed":
+            analysis = client.config_registry.analyses.retrieve(summary.analysis_id)
+            recommendation = analysis.model_dump(mode="json", exclude_none=True).get(
+                "recommendation"
+            )
+            if (recommendation or {}).get("type") == "recommendation":
+                return recommendation
+    return None
+
+
+def main() -> int:
+    payload = json.load(sys.stdin)
+    args = payload.get("args") or {}
+    metadata = tomllib.loads(payload["task"]["config"]).get("metadata", {})
+    url, country = metadata.get("start_url"), metadata.get("country")
+    if not url or not country:
+        raise SystemExit(f"Task for {metadata.get('site')!r} needs metadata.start_url and country")
+
+    client = Kernel()
+    lookup = client.config_registry.lookup(url=url, allowed_proxy_countries=[country])
+    lookup = lookup.model_dump(mode="json", exclude_none=True)
+    recommendation = (
+        project_recommendation(client, lookup["target"]["normalized"])
+        or lookup.get("recommendation")
+        or {}
+    )
+    proxy = (recommendation.get("proxy") or {}).get("create")
+    if recommendation.get("type") == "recommendation":
+        recommended = recommendation.get("browser") or {}
+        browser: dict[str, Any] = {
+            key: recommended[key] for key in BROWSER_KEYS if key in recommended
+        }
+        if proxy:
+            browser["proxy_create"] = proxy
+        source = "registry"
+    else:
+        browser = {
+            "stealth": True,
+            "proxy_create": {"type": "residential", "config": {"country": country}},
+            **(args.get("fallback") or {}),
+        }
+        source = "fallback"
+    json.dump(
+        {
+            "browser": browser,
+            "steering": lookup.get("guidance") if args.get("steering", False) else None,
+            "provenance": {
+                "source": source,
+                "matched_target": recommendation.get("matched_target"),
+                "evidence": recommendation.get("evidence"),
+            },
+        },
+        sys.stdout,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

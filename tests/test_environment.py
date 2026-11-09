@@ -215,7 +215,7 @@ class FakeProvider:
         self.calls.append(("release", session_id))
 
 
-def _remote_environment(tmp_path, monkeypatch, provider):
+def _remote_environment(tmp_path, monkeypatch, provider, config=None):
     from harbor.environments.base import ExecResult
     from harbor.environments.docker.docker import DockerEnvironment
 
@@ -241,7 +241,7 @@ def _remote_environment(tmp_path, monkeypatch, provider):
     monkeypatch.setattr(DockerEnvironment, "exec", exec)
     monkeypatch.setitem(environment.providers.PROVIDERS, "fake", provider)
     (tmp_path / "kernel-config.json").write_text(
-        json.dumps({"provider": "fake", "params": {"stealth": True}})
+        json.dumps(config or {"provider": "fake", "params": {"stealth": True}})
     )
     return environment.RemoteBrowserEnvironment(environment_dir=tmp_path), calls
 
@@ -267,3 +267,22 @@ def test_remote_browser_creation_failure_is_identifiable(tmp_path, monkeypatch):
     env, _ = _remote_environment(tmp_path, monkeypatch, FakeProvider(fail=True))
     with pytest.raises(environment.BrowserCreationError, match="no capacity"):
         asyncio.run(env.start(force_build=False))
+
+
+def test_configurator_settings_override_the_remote_browser_params(tmp_path, monkeypatch):
+    provider = FakeProvider()
+    proxy = {"type": "isp", "config": {"country": "GB"}}
+    config = {
+        "provider": "fake",
+        "params": {"stealth": True, "timeout_seconds": 1800},
+        "stealth": False,
+        "proxy_create": proxy,
+    }
+    env, _ = _remote_environment(tmp_path, monkeypatch, provider, config)
+
+    asyncio.run(env.start(force_build=False))
+
+    assert provider.calls[0] == (
+        "create",
+        {"stealth": False, "timeout_seconds": 1800, "proxy_create": proxy},
+    )

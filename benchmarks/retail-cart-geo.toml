@@ -7,4 +7,5 @@ arms = [
   "codex-pw-kernel-geo",
   "codex-pw-kernel-evervault-eu",
   "codex-pw-kernel-evervault-residential",
+  "codex-pw-kernel-registry",
 ]
