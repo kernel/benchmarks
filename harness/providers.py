@@ -89,7 +89,9 @@ class KernelEvervaultProvider(KernelProvider):
     params, plus an `evervault` table with the mint's `ttl`, the `hosts` it
     may reveal to, optionally `relay_host` to use another region's relay than
     the one the mint returns (the credentials work on any), and optionally
-    `proxy_settings` for Evervault's egress.
+    `proxy_settings` for Evervault's egress. A residential `proxy_create`, as
+    the `geo` configurator writes it, becomes Evervault's residential egress in
+    that country instead of a Kernel proxy.
     """
 
     env = ("KERNEL_API_KEY", "EV_APP_UUID", "EV_API_KEY")
@@ -125,7 +127,14 @@ class KernelEvervaultProvider(KernelProvider):
 
     async def create(self, params: dict[str, Any]) -> Session:
         browser_params = dict(params)
-        settings = browser_params.pop("evervault")
+        settings = dict(browser_params.pop("evervault"))
+        egress = browser_params.pop("proxy_create", None)
+        if egress is not None:
+            if egress.get("type") != "residential":
+                raise ValueError(
+                    f"Evervault egress can only be residential, not {egress.get('type')}"
+                )
+            settings["proxy_settings"] = {"type": "residential", **(egress.get("config") or {})}
         proxy = await self._mint(settings)
         config = {
             "host": settings.get("relay_host") or proxy["hostname"],

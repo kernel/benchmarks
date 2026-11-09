@@ -170,6 +170,7 @@ The `retail-cart` tasks reached from each site's own market, for sites outside t
 |---|---|
 | `codex-pw-kernel-geo` | Kernel, `stealth: true`, with a new residential proxy in the task's country per trial (the `geo` configurator) |
 | `codex-pw-kernel-evervault-eu` | Kernel, `stealth: true`, with the whole session sent through Evervault's EU (Ireland) relay |
+| `codex-pw-kernel-evervault-residential` | Same, with Evervault's residential egress in the task's country. Needs residential egress enabled on the Evervault app. |
 
 ```bash
 uv run bench run retail-cart-geo --suite-arg tasks=path/to/tasks.toml --attempts 5

@@ -3,4 +3,8 @@
 # through Evervault's EU relay. Tasks need a `country`; pass a task file with
 # `--suite-arg tasks=<path>`.
 suite = "retail-cart"
-arms = ["codex-pw-kernel-geo", "codex-pw-kernel-evervault-eu"]
+arms = [
+  "codex-pw-kernel-geo",
+  "codex-pw-kernel-evervault-eu",
+  "codex-pw-kernel-evervault-residential",
+]

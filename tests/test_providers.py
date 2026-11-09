@@ -192,3 +192,41 @@ def test_kernel_creates_and_deletes_a_proxy_per_session(monkeypatch):
     assert calls[0][0] == "proxy.create" and calls[0][1]["config"] == {"country": "GB"}
     assert calls[1] == ("browser.create", {"stealth": True, "proxy_id": "p1"})
     assert calls[2:] == [("browser.delete", "b1"), ("proxy.delete", "p1")]
+
+
+def test_kernel_evervault_turns_a_residential_proxy_into_evervault_egress(monkeypatch):
+    monkeypatch.setenv("EV_APP_UUID", "app_1")
+    monkeypatch.setenv("EV_API_KEY", "ev:key:1")
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.url.host == "ca.evervault.com":
+            return httpx.Response(200, text="PEM")
+        proxy = {"hostname": "us-va.browser.relay.evervault.app", "port": 443}
+        return httpx.Response(
+            200, json={"proxyConfiguration": {**proxy, "username": "app_1", "password": "jwe"}}
+        )
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        providers.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    calls = []
+    monkeypatch.setattr(providers, "AsyncKernel", lambda: _FakeKernel(calls))
+
+    asyncio.run(
+        providers.KernelEvervaultProvider().create(
+            {
+                "evervault": {"hosts": ["a.example"]},
+                "proxy_create": {"type": "residential", "config": {"country": "GB"}},
+            }
+        )
+    )
+
+    mint = json.loads(requests[1].content)
+    assert mint["proxySettings"] == {"type": "residential", "country": "GB"}
+    assert calls[0][1]["type"] == "custom"
+    assert "proxy_create" not in calls[1][1]
