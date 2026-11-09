@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Give each trial a proxy in the country of the task's site.
+
+The country comes from `metadata.country` in the task's task.toml, so a site
+is reached from the market it serves. The proxy type is the `proxy` arg
+(default `residential`). The proxy is created per trial and deleted after it.
+
+stdin:  {"task": {"config": str, "instruction": str}, "args": {"proxy": str}}
+stdout: {"browser": {...}, "steering": null, "provenance": {...}}
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import tomllib
+
+
+def main() -> int:
+    payload = json.load(sys.stdin)
+    metadata = tomllib.loads(payload["task"]["config"]).get("metadata", {})
+    country = metadata.get("country")
+    if not country:
+        raise SystemExit(f"Task for {metadata.get('site')!r} has no metadata.country")
+    proxy = (payload.get("args") or {}).get("proxy", "residential")
+    json.dump(
+        {
+            "browser": {"proxy_create": {"type": proxy, "config": {"country": country}}},
+            "steering": None,
+            "provenance": {"site": metadata.get("site"), "proxy": proxy, "country": country},
+        },
+        sys.stdout,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

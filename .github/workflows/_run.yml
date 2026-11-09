@@ -71,6 +71,8 @@ jobs:
       STEEL_API_KEY: ${{ secrets.STEEL_API_KEY }}
       HYPERBROWSER_API_KEY: ${{ secrets.HYPERBROWSER_API_KEY }}
       ANCHOR_API_KEY: ${{ secrets.ANCHOR_API_KEY }}
+      EV_APP_UUID: ${{ secrets.EV_APP_UUID }}
+      EV_API_KEY: ${{ secrets.EV_API_KEY }}
       BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
       BRAINTRUST_PROJECT: ${{ vars.BRAINTRUST_PROJECT }}
     steps:

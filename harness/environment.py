@@ -25,6 +25,9 @@ commands then run as root. A trial where either fails fails with
 and drives a browser from any provider in `harness.providers` over CDP, so
 providers are compared with the same agent, tools and container. Its config
 file names the `provider` and that provider's session create `params`.
+Settings a configurator writes beside them, such as `stealth` or a
+`proxy_create` entry, override `params`; only the Kernel providers accept
+`proxy_create`.
 """
 
 from __future__ import annotations
@@ -232,7 +235,11 @@ class RemoteBrowserEnvironment(DockerEnvironment):
         config = json.loads((Path(environment_dir) / CONFIG_FILE).read_text())
         self._provider_name: str = config["provider"]
         self._provider = providers.get(self._provider_name)
-        self._create_params: dict[str, Any] = config.get("params") or {}
+        # A configurator's settings sit beside `params` and override them.
+        self._create_params: dict[str, Any] = {
+            **(config.get("params") or {}),
+            **{key: value for key, value in config.items() if key not in ("provider", "params")},
+        }
         self._browser_session_id: str | None = None
         super().__init__(environment_dir, *args, **kwargs)
 

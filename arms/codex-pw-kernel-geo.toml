@@ -1,0 +1,18 @@
+# Same as codex-pw-kernel, but each trial gets a new residential proxy in the
+# country of the task's site (the task's `country`).
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+environment = "remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser]
+configurator = "geo"
+configurator_args = { proxy = "residential" }
+
+[browser.config]
+provider = "kernel"
+params = { stealth = true, timeout_seconds = 1800 }

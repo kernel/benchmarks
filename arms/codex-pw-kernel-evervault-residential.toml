@@ -1,0 +1,29 @@
+# Same as codex-pw-kernel-evervault-eu, but Evervault sends the session out
+# through its residential egress in the country of the task's site (the
+# `geo` configurator), as the purchase pipelines it is compared with do.
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+environment = "remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser]
+configurator = "geo"
+configurator_args = { proxy = "residential" }
+
+[browser.config]
+provider = "kernel-evervault"
+
+[browser.config.params]
+stealth = true
+timeout_seconds = 1800
+
+# See codex-pw-kernel-evervault for the TTL. Residential egress has to be
+# enabled for the Evervault app.
+[browser.config.params.evervault]
+ttl = 900
+hosts = ["checkout-test.adyen.com"]
+relay_host = "eu-ie.browser.relay.evervault.app"

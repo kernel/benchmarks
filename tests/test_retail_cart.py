@@ -32,6 +32,18 @@ def test_generate_writes_a_harbor_task(tmp_path):
     assert (task_dir / "environment/bench/finalize-mcp").is_file()
 
 
+def test_a_tasks_file_and_country_can_be_given(tmp_path):
+    tasks = tmp_path / "tasks.toml"
+    tasks.write_text(
+        '[[tasks]]\nid = "shop"\nsite = "shop.example"\nstart_url = "https://shop.example/"\n'
+        'item = "a pair of socks"\ncart_url = "https://shop.example/cart"\n'
+        'cart_match = "sock"\ncountry = "GB"\n'
+    )
+    [task_dir] = suite.generate(None, tmp_path / "out", tasks=str(tasks))
+
+    assert tomllib.loads((task_dir / "task.toml").read_text())["metadata"]["country"] == "GB"
+
+
 def test_unknown_task_is_refused(tmp_path):
     with pytest.raises(SystemExit, match="nope"):
         suite.generate(["nope"], tmp_path)

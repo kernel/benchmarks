@@ -1,0 +1,11 @@
+# The retail-cart tasks reached from each site's own market: a Kernel browser
+# with a residential proxy in the site's country, and a Kernel browser sent
+# through Evervault's EU relay. Tasks need a `country`; pass a task file with
+# `--suite-arg tasks=<path>`.
+suite = "retail-cart"
+arms = [
+  "codex-pw-kernel-geo",
+  "codex-pw-kernel-evervault-eu",
+  "codex-pw-kernel-evervault-residential",
+  "codex-pw-kernel-registry",
+]

@@ -1,0 +1,20 @@
+# Same as codex-pw-kernel-geo, but each site's browser settings, proxy and
+# guidance come from Kernel's config registry for the task's start URL, with
+# proxies limited to the task's country. Sites the registry has no
+# recommendation for get the geo arm's settings.
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+environment = "remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser]
+configurator = "registry"
+configurator_args = { steering = true }
+
+[browser.config]
+provider = "kernel"
+params = { stealth = true, timeout_seconds = 1800 }

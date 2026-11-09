@@ -1,0 +1,26 @@
+# Same as codex-pw-kernel, but the whole browser session goes through
+# Evervault's browser proxy, so sites see Evervault's egress instead of
+# Kernel's stealth proxy pool.
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+toolset = "playwright-mcp"
+environment = "remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "kernel-evervault"
+
+[browser.config.params]
+stealth = true
+timeout_seconds = 1800
+
+# The proxy closes its tunnels when the mint's TTL ends. Sandbox apps cap the
+# TTL at 900 seconds, the same as the agent timeout, so a trial that uses all
+# of it can lose the proxy before the verifier runs. A production app allows
+# up to 4 hours. No card is minted, so the host only has to be valid.
+[browser.config.params.evervault]
+ttl = 900
+hosts = ["checkout-test.adyen.com"]
