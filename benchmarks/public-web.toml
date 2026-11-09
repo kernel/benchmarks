@@ -1,2 +1,4 @@
+# Signed-out tasks on public sites, comparing browser approaches under one runner: the hybrid
+# toolset with and without injected xwebmcp tools, and Playwright alone.
 suite = "public-web"
 arms = ["public-control", "public-treatment", "public-playwright"]
