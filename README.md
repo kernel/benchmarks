@@ -194,7 +194,8 @@ pairs; do not interpret the per-arm medians as a paired speedup or compare diffe
 
 The agent calls `finalize` with its JSON answer. The verifier applies the pinned answer
 schema/rules and, for the cart task, reads the final page independently and compares it to
-the answer. A success claim alone is insufficient, and an invalid browser toolset yields
+the answer. The rules and the grader are uploaded only for verification, so the agent's
+container never holds them. A success claim alone is insufficient, and an invalid browser toolset yields
 zero reward. The report separates page-checked passes from answer-rule passes: shape/range
 checks and even pinned rules do not verify every returned fact. Audit examples before
 publishing correctness claims; this catalog is a screening set, not a held-out validation set.

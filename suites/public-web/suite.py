@@ -69,11 +69,27 @@ def _write(task_source: Path, task_dir: Path, source: Path, sha: str) -> Path:
         shutil.rmtree(task_dir)
     environment = task_dir / "environment"
     shutil.copytree(HERE / "image", environment)
-    bench = environment / "bench"
-    (bench / "task.json").write_text(json.dumps(task, indent=2) + "\n")
+    # The agent has a shell in this image, so it holds only what setup needs.
+    start = {
+        "intent": {key: intent.get(key) for key in ("id", "domain", "start_url", "entry_tool")},
+        "registered": task["registered"],
+        "grading": task["grading"],
+        "source_sha": sha,
+    }
+    (environment / "bench/start.json").write_text(json.dumps(start, indent=2) + "\n")
     # Only the treatment toolset copies this batch into its task image.
     shutil.copy2(task_source / "tools.js", task_dir / "xwebmcp-tools.js")
-    upstream = bench / "upstream"
+
+    step = task_dir / "steps/run"
+    (step / "workdir").mkdir(parents=True)
+    # The answer rules and the grader go in the step's tests, which Harbor uploads to
+    # /tests only once the agent has finished.
+    tests = step / "tests"
+    tests.mkdir()
+    (tests / "task.json").write_text(json.dumps(task, indent=2) + "\n")
+    shutil.copy2(HERE / "verifier/score.mjs", tests / "score.mjs")
+    shutil.copy2(HERE / "image/bench/api.mjs", tests / "api.mjs")
+    upstream = tests / "upstream"
     (upstream / "bench/lib").mkdir(parents=True)
     shutil.copy2(source / "bench/grade.mjs", upstream / "bench/grade.mjs")
     for name in GRADER_FILES:
@@ -82,14 +98,11 @@ def _write(task_source: Path, task_dir: Path, source: Path, sha: str) -> Path:
     shutil.copy2(source / "extension/lib/url-pattern.js", upstream / "extension/lib/url-pattern.js")
     shutil.copy2(source / "LICENSE", upstream / "LICENSE")
 
-    step = task_dir / "steps/run"
-    (step / "workdir").mkdir(parents=True)
-    (step / "tests").mkdir()
     (step / "instruction.md").write_text(
         task["prompt"] + "\n\n" + (intent.get("instructions") or "") + "\n\n" + SAFETY
     )
     (step / "workdir/setup.sh").write_text("#!/bin/bash\nset -euo pipefail\n/opt/bench/setup.mjs\n")
-    (step / "tests/test.sh").write_text("#!/bin/bash\nset -euo pipefail\n/opt/bench/score.mjs\n")
+    (tests / "test.sh").write_text("#!/bin/bash\nset -euo pipefail\nnode /tests/score.mjs\n")
     config = {
         "schema_version": "1.3",
         "source": "public-web",

@@ -42,7 +42,7 @@ return { url: page.url(), title: await page.title() };
 }
 
 async function main() {
-  const task = JSON.parse(readFileSync(new URL("./task.json", import.meta.url), "utf8"));
+  const task = JSON.parse(readFileSync(new URL("./start.json", import.meta.url), "utf8"));
   const approach = process.env.BROWSER_APPROACH;
   const source = approach === "treatment" ? readFileSync(new URL("./tools.js", import.meta.url), "utf8") : null;
   const result = await setup(task, approach, source);

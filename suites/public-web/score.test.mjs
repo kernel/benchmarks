@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { score } from "./image/bench/score.mjs";
+import { score } from "./verifier/score.mjs";
 
 const task = { intent: {}, schema: {} };
 const success = { outcome: "success", evidence: '{"answer": 1}' };

@@ -5,5 +5,5 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY bench/ /opt/bench/
-RUN chmod +x /opt/bench/finalize-mcp /opt/bench/setup.mjs /opt/bench/score.mjs
+RUN chmod +x /opt/bench/finalize-mcp /opt/bench/setup.mjs
 WORKDIR /app

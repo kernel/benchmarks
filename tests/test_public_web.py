@@ -64,6 +64,7 @@ def test_suite_writes_harbor_task_and_keeps_injection_outside_image(tmp_path):
             "start_url": "https://example.com",
             "stage": "find",
             "trial_timeout_sec": 600,
+            "rules": [{"path": "answer", "equals": "pinned-answer"}],
         },
         "prompt": "Return JSON.",
         "grading": "pinned rules",
@@ -81,6 +82,28 @@ def test_suite_writes_harbor_task_and_keeps_injection_outside_image(tmp_path):
     assert not (task_dir / "environment/bench/tools.js").exists()
     assert "finalize" in (task_dir / "steps/run/instruction.md").read_text()
     assert "setup.mjs" in (task_dir / "steps/run/workdir/setup.sh").read_text()
+    # The agent's image has no answer rules or grader; they arrive with the tests.
+    image = [path for path in (task_dir / "environment").rglob("*") if path.is_file()]
+    assert sorted(path.name for path in image) == [
+        "Dockerfile",
+        "api.mjs",
+        "finalize-mcp",
+        "setup.mjs",
+        "start.json",
+    ]
+    assert not any("pinned-answer" in path.read_text() for path in image)
+    start = json.loads((task_dir / "environment/bench/start.json").read_text())
+    assert start["intent"] == {
+        "id": "test",
+        "domain": "example.com",
+        "start_url": "https://example.com",
+        "entry_tool": None,
+    }
+    tests = task_dir / "steps/run/tests"
+    assert "pinned-answer" in (tests / "task.json").read_text()
+    assert (tests / "upstream/bench/grade.mjs").exists()
+    assert {"score.mjs", "api.mjs"} <= {path.name for path in tests.iterdir()}
+    assert "node /tests/score.mjs" in (tests / "test.sh").read_text()
 
 
 def test_toolsets_preserve_finalize_and_inject_only_treatment(task_dir, tmp_path, monkeypatch):

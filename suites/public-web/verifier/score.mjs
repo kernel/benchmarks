@@ -2,7 +2,6 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import { execute } from "./api.mjs";
 
 export async function score(task, report, readEndState, gradeAnswer) {
   let endState = null;
@@ -27,6 +26,7 @@ export async function score(task, report, readEndState, gradeAnswer) {
 
 async function main() {
   const task = JSON.parse(readFileSync(new URL("./task.json", import.meta.url), "utf8"));
+  const { execute } = await import("./api.mjs");
   const { gradeAnswer } = await import("./upstream/bench/grade.mjs");
   const { readPage, readPageArg } = await import("./upstream/bench/lib/page.mjs");
   const readJson = (file) => existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null;
