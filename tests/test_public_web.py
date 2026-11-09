@@ -349,3 +349,88 @@ for line in sys.stdin:
     assert [call["rejected"] for call in calls] == [True, False]
     check = runpy.run_path(str(BIN / "kernel-mcp-verify"))["check_calls"]
     assert check(calls, ["playwright"], "s", "playwright")["valid"]
+
+
+PLAYWRIGHT_TOOL = {
+    "name": "execute_playwright_code",
+    "description": (
+        "execute arbitrary playwright code in a fresh execution context against the browser. "
+        "for reusable site actions, check `webmcp.listTools()` first and prefer a suitable "
+        "structured tool; use playwright when none is exposed. does not create or delete "
+        "browsers -- use manage_browsers for session lifecycle. it has access to `page`, "
+        "`context`, `browser`, and `webmcp` variables.\n\n"
+        "every call runs in an executor: a dedicated node.js process. calls on different "
+        "executors run concurrently."
+    ),
+    "inputSchema": {
+        "properties": {
+            "code": {
+                "description": (
+                    "playwright/typescript code with `page`, `context`, `browser`, and "
+                    "browser-wide `webmcp` helpers in scope; the value you `return` is sent "
+                    "back as the tool result. return a focused `ariaSnapshot()`, e.g. `await "
+                    "page.locator('main').ariaSnapshot()`. a global webmcp object is available "
+                    "for discovering tools. check the invocation status. do not invoke the "
+                    "tool again to submit it."
+                )
+            },
+            "session_id": {"description": "browser session id or name."},
+        }
+    },
+}
+
+
+@pytest.mark.parametrize(
+    "allowed", ["", "execute_playwright_code,webmcp", "execute_playwright_code"]
+)
+def test_call_proxy_withholds_guidance_about_tools_the_arm_lacks(tmp_path, allowed):
+    server = tmp_path / "server.py"
+    server.write_text(f"""import sys, json
+tool = {PLAYWRIGHT_TOOL!r}
+for line in sys.stdin:
+    request = json.loads(line)
+    result = {{"instructions": "1. webmcp: prefer this. create sessions with manage_browsers."}} if request["method"] == "initialize" else {{"tools": [tool]}}
+    print(json.dumps({{"jsonrpc": "2.0", "id": request["id"], "result": result}}), flush=True)
+""")
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+    ]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(BIN / "mcp-call-log"),
+            str(tmp_path / "calls.jsonl"),
+            sys.executable,
+            str(server),
+        ],
+        input="\n".join(json.dumps(request) for request in requests) + "\n",
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env={**os.environ, "KERNEL_BENCH_ALLOWED_TOOLS": allowed, "KERNEL_SESSION_ID": "s"},
+    )
+    assert result.returncode == 0, result.stderr
+    responses = {
+        response["id"]: response["result"]
+        for response in map(json.loads, result.stdout.splitlines())
+    }
+    # Arms without an allowlist, such as ClawBench's, get the server's messages as sent.
+    assert ("instructions" in responses[1]) == (allowed == "")
+    (tool,) = responses[2]["tools"]
+    if "webmcp" in allowed or not allowed:
+        assert tool == PLAYWRIGHT_TOOL
+        return
+    assert "webmcp" not in json.dumps(tool).lower()
+    assert tool["description"] == (
+        "execute arbitrary playwright code in a fresh execution context against the browser."
+        "\n\nevery call runs in an executor: a dedicated node.js process. calls on different "
+        "executors run concurrently."
+    )
+    properties = tool["inputSchema"]["properties"]
+    assert properties["code"]["description"] == (
+        "playwright/typescript code with `page`, `context`, `browser` in scope; the value you "
+        "`return` is sent back as the tool result. return a focused `ariaSnapshot()`, e.g. "
+        "`await page.locator('main').ariaSnapshot()`."
+    )
+    assert properties["session_id"] == PLAYWRIGHT_TOOL["inputSchema"]["properties"]["session_id"]

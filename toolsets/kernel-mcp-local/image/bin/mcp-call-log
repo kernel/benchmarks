@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Proxy a stdio MCP server, logging calls and optionally restricting its tools."""
+"""Proxy a stdio MCP server, logging calls and optionally restricting its tools.
+
+With an allowlist, the server's own usage instructions are withheld too: they
+rank its tools and name ones the arm lacks, and the task instruction already
+says how to use the arm's tools.
+"""
 
 from __future__ import annotations
 
@@ -15,6 +20,9 @@ from pathlib import Path
 from typing import Any
 
 WEBMCP_IN_CODE = re.compile(r"\b(?:listTools|invokeTool)\s*\(")
+WEBMCP = re.compile(r"webmcp", re.IGNORECASE)
+# `webmcp` listed after the other names a description says are in scope.
+WEBMCP_IN_SCOPE = re.compile(r"(`),\s*(?:and\s+)?(?:browser-wide\s+)?`webmcp`(?:\s+helpers)?")
 
 
 def parse(line: bytes) -> dict[str, Any]:
@@ -38,6 +46,31 @@ def rejection(
     if "webmcp" not in allowed and WEBMCP_IN_CODE.search(str(arguments.get("code") or "")):
         return "This arm does not permit WebMCP. Use Playwright DOM/UI actions instead."
     return None
+
+
+def without_webmcp(text: str) -> str:
+    """Cut each paragraph of a description at its first sentence that mentions WebMCP.
+
+    The server follows a tool's own description with guidance to prefer WebMCP,
+    and the sentences after it continue that guidance.
+    """
+    paragraphs = []
+    for paragraph in WEBMCP_IN_SCOPE.sub(r"\1", text).split("\n\n"):
+        kept = []
+        for sentence in re.split(r"(?<=\.)\s+", paragraph):
+            if WEBMCP.search(sentence):
+                break
+            kept.append(sentence)
+        if kept:
+            paragraphs.append(" ".join(kept))
+    return "\n\n".join(paragraphs)
+
+
+def describe_without_webmcp(tool: dict[str, Any]) -> None:
+    properties = (tool.get("inputSchema") or {}).get("properties") or {}
+    for described in (tool, *properties.values()):
+        if isinstance(described, dict) and isinstance(described.get("description"), str):
+            described["description"] = without_webmcp(described["description"])
 
 
 def main() -> int:
@@ -106,7 +139,7 @@ def main() -> int:
                         record(params, started, started_at, response, rejected=True)
                         emit((json.dumps(response) + "\n").encode())
                         continue
-                if "id" in message and method in {"tools/call", "tools/list"}:
+                if "id" in message and method in {"tools/call", "tools/list", "initialize"}:
                     with lock:
                         pending[message["id"]] = (method, params, started, started_at)
                 child.stdin.write(line)
@@ -123,11 +156,18 @@ def main() -> int:
                 if method == "tools/call":
                     record(params, started, started_at, message)
                 elif allowed and "result" in message:
-                    message["result"]["tools"] = [
-                        tool
-                        for tool in message["result"].get("tools", [])
-                        if tool.get("name") in allowed
-                    ]
+                    if method == "initialize":
+                        message["result"].pop("instructions", None)
+                    else:
+                        tools = [
+                            tool
+                            for tool in message["result"].get("tools", [])
+                            if tool.get("name") in allowed
+                        ]
+                        if "webmcp" not in allowed:
+                            for tool in tools:
+                                describe_without_webmcp(tool)
+                        message["result"]["tools"] = tools
                     line = (json.dumps(message) + "\n").encode()
             emit(line)
     return child.wait()
