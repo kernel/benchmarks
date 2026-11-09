@@ -112,7 +112,7 @@ def run(
         benchmark_name, arm_names, task_ids, work_dir, toolset_ref, suite_args, toolset_args
     )
     for item in prepared:
-        if item.arm.environment == "remote-browser":
+        if item.arm.environment in ("remote-browser", "kernel-vm-remote-browser"):
             for configuration in item.configurations.values():
                 preflight.require_env(*providers.get(configuration["browser"]["provider"]).env)
 

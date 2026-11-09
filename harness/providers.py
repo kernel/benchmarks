@@ -9,7 +9,9 @@ is opened, the agent connects, and the verifier connects, each separately.
 
 from __future__ import annotations
 
+import inspect
 import os
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,7 +40,12 @@ class KernelProvider(Provider):
 
     async def create(self, params: dict[str, Any]) -> Session:
         async with AsyncKernel() as client:
-            browser = await client.browsers.create(**params)
+            # Params the SDK does not know yet (such as the closed-beta
+            # `fingerprint`) are sent in the request body as they are.
+            known = inspect.signature(client.browsers.create).parameters
+            kwargs = {key: value for key, value in params.items() if key in known}
+            extra = {key: value for key, value in params.items() if key not in known}
+            browser = await client.browsers.create(**kwargs, extra_body=extra or None)
         return Session(browser.session_id, browser.cdp_ws_url)
 
     async def release(self, session_id: str) -> None:
@@ -82,9 +89,14 @@ class SteelProvider(HttpProvider):
     base_url = "https://api.steel.dev/v1"
     key_header = "steel-api-key"
 
+    def _project(self) -> dict[str, str]:
+        # An organization-scoped key must name the project in each request body.
+        project = os.environ.get("STEEL_PROJECT_ID")
+        return {"projectId": project} if project else {}
+
     async def create(self, params: dict[str, Any]) -> Session:
         async with self._client() as client:
-            response = await client.post("/sessions", json=params)
+            response = await client.post("/sessions", json={**self._project(), **params})
             response.raise_for_status()
             session = response.json()
         url = f"wss://connect.steel.dev?apiKey={os.environ['STEEL_API_KEY']}&sessionId={session['id']}"
@@ -92,7 +104,8 @@ class SteelProvider(HttpProvider):
 
     async def release(self, session_id: str) -> None:
         async with self._client() as client:
-            (await client.post(f"/sessions/{session_id}/release")).raise_for_status()
+            response = await client.post(f"/sessions/{session_id}/release", json=self._project())
+            response.raise_for_status()
 
 
 class HyperbrowserProvider(HttpProvider):
@@ -105,11 +118,35 @@ class HyperbrowserProvider(HttpProvider):
             response = await client.post("/session", json=params)
             response.raise_for_status()
             session = response.json()
-        return Session(session["id"], session["wsEndpoint"])
+        # Hyperbrowser stops a session when its CDP client disconnects unless the
+        # URL asks to keep it alive, and each trial connects three times.
+        url = session["wsEndpoint"]
+        url += ("&" if urllib.parse.urlsplit(url).query else "?") + "keepAlive=true"
+        return Session(session["id"], url)
 
     async def release(self, session_id: str) -> None:
         async with self._client() as client:
             (await client.put(f"/session/{session_id}/stop")).raise_for_status()
+
+
+class BrowserUseProvider(HttpProvider):
+    env = ("BROWSER_USE_API_KEY",)
+    base_url = "https://api.browser-use.com/api/v4"
+    key_header = "X-Browser-Use-API-Key"
+
+    async def create(self, params: dict[str, Any]) -> Session:
+        async with self._client() as client:
+            response = await client.post("/browsers", json=params)
+            response.raise_for_status()
+            session = response.json()
+        if not session.get("cdpUrl"):
+            raise RuntimeError(f"Browser Use returned no CDP URL for browser {session.get('id')}")
+        return Session(session["id"], session["cdpUrl"])
+
+    async def release(self, session_id: str) -> None:
+        async with self._client() as client:
+            response = await client.patch(f"/browsers/{session_id}", json={"action": "stop"})
+            response.raise_for_status()
 
 
 class AnchorProvider(HttpProvider):
@@ -134,6 +171,7 @@ PROVIDERS: dict[str, Provider] = {
     "browserbase": BrowserbaseProvider(),
     "steel": SteelProvider(),
     "hyperbrowser": HyperbrowserProvider(),
+    "browser-use": BrowserUseProvider(),
     "anchor": AnchorProvider(),
 }
 

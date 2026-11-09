@@ -91,7 +91,7 @@ A run of two arms on two tasks (Red Cross and Indeed) produced this summary:
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Codex and Claude Code arms; the `site-config` configurator's model |
 | `PURELY_MAIL_API_KEY`, `PURELY_MAIL_DOMAIN` | ClawBench creates a disposable [PurelyMail](https://purelymail.com) mailbox on your domain for every task, so agents can sign up and receive confirmation emails. |
 | `CLAWBENCH_JUDGE_BASE_URL`, `CLAWBENCH_JUDGE_API_KEY`, `CLAWBENCH_JUDGE_MODEL`, `CLAWBENCH_JUDGE_API_TYPE` | ClawBench's LLM judge, which checks the intercepted request against the task. Any OpenAI-compatible endpoint works with `CLAWBENCH_JUDGE_API_TYPE=openai-completions`; we use `deepseek/deepseek-v4-pro` through OpenRouter. See [ClawBench](https://github.com/TIGER-AI-Lab/ClawBench) for details. |
-| `BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`, `STEEL_API_KEY`, `HYPERBROWSER_API_KEY`, `ANCHOR_API_KEY` | Arms on those providers' browsers (`environment = "remote-browser"`); checked before a run that includes them |
+| `BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`, `BROWSER_USE_API_KEY`, `STEEL_API_KEY` (plus `STEEL_PROJECT_ID` for an organization-scoped key), `HYPERBROWSER_API_KEY`, `ANCHOR_API_KEY` | Arms on those providers' browsers (`environment = "remote-browser"` or `"kernel-vm-remote-browser"`); checked before a run that includes them |
 | `BRAINTRUST_API_KEY`, `BRAINTRUST_PROJECT` | Optional: publishing results |
 
 ## Running in GitHub Actions
@@ -122,7 +122,7 @@ ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whet
 
 ### `retail-cart`
 
-Guest add-to-cart tasks on 16 retail and industrial-supply sites with heavy bot protection. Each task starts on the site's home page and asks the agent to put one item in the site's cart as a guest, by whatever route works, and show the cart.
+Guest add-to-cart tasks on 28 retail and industrial-supply sites, in three tiers: 2 `easy` controls with little bot protection, 13 `standard` protected sites, and 13 `hard` sites that block most automated browsers. Run one tier with `--suite-arg tiers=hard`. Each task starts on the site's home page and asks the agent to put one item in the site's cart as a guest, by whatever route works, and show the cart.
 
 | Arm | Agent | Browser |
 |---|---|---|
@@ -142,17 +142,19 @@ uv run bench run retail-cart --attempts 10
 
 ### `retail-cart-providers`
 
-The `retail-cart` tasks on each browser provider's browser. Every arm uses the same agent (Codex, `gpt-6-luna`), the same tools ([Playwright MCP](https://github.com/microsoft/playwright-mcp) attached over CDP) and the same task container on the runner's Docker, so arms differ only in the browser. Each provider gets its own anti-bot settings:
+The `retail-cart` tasks on each browser provider's browser. Within an agent, every arm uses the same tools ([Playwright MCP](https://github.com/microsoft/playwright-mcp) attached over CDP) and the same task container, so arms differ only in the browser. The `codex-pw-*` arms (Codex, `gpt-6-luna`) run the container on the runner's Docker (`environment = "remote-browser"`). The `claude-pw-*` arms (Claude Code, `claude-sonnet-5-5`) run it on a Kernel VM used only as compute (`environment = "kernel-vm-remote-browser"`), which needs no local Docker; the Kernel arms still get a separate browser session, reached over the network like every other provider's. Each provider gets its own anti-bot settings:
 
-| Arm | Browser |
-|---|---|
-| `codex-pw-kernel` | Kernel, `stealth: true` |
-| `codex-pw-browserbase` | Browserbase, Advanced Stealth (Scale plan), CAPTCHA solving, its residential proxies |
-| `codex-pw-steel` | Steel, residential proxy and CAPTCHA solving |
-| `codex-pw-hyperbrowser` | Hyperbrowser, stealth, proxy and CAPTCHA solving |
-| `codex-pw-anchor` | Anchor, its US proxy, extra stealth and CAPTCHA solving |
+| Provider | Arms | Browser |
+|---|---|---|
+| Kernel | `codex-pw-kernel`, `claude-pw-kernel` | `stealth: true` (managed ISP proxy and CAPTCHA solver) |
+| Kernel, macOS | `claude-pw-kernel-macos` | as above, plus the macOS fingerprint (`fingerprint: {os: macos}`, closed beta) |
+| Browserbase | `codex-pw-browserbase`, `claude-pw-browserbase` | CAPTCHA solving and its residential proxies. Advanced Stealth is left out: Browserbase rejects it outside the Enterprise plan |
+| Browser Use | `codex-pw-browser-use`, `claude-pw-browser-use` | its US proxy |
+| Steel | `codex-pw-steel`, `claude-pw-steel` | residential proxy and CAPTCHA solving; 15-minute sessions, the Launch plan's maximum |
+| Hyperbrowser | `codex-pw-hyperbrowser`, `claude-pw-hyperbrowser` | stealth, proxy and CAPTCHA solving |
+| Anchor | `codex-pw-anchor` | its US proxy, extra stealth and CAPTCHA solving |
 
-The start page, the agent and the verifier each connect to the browser separately, so sessions are created to outlive a CDP disconnect (Browserbase's `keepAlive`, Anchor's idle timeout). Scoring is the same as `retail-cart`.
+The start page, the agent and the verifier each connect to the browser separately, so sessions are created to outlive a CDP disconnect (Browserbase's `keepAlive`, Hyperbrowser's `keepAlive=true` on the CDP URL, Anchor's idle timeout). A Steel key scoped to the whole organization also needs `STEEL_PROJECT_ID`. Scoring is the same as `retail-cart`.
 
 ```bash
 uv run bench run retail-cart-providers --attempts 10 --concurrency 4

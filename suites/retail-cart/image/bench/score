@@ -39,6 +39,12 @@ FAILURES = ("failed", "blocked", "website_error", "kernel_error")
 FINAL_PAGE = "return { url: page.url(), title: await page.title() };"
 
 # A bot check or access-denied page in place of the cart.
+# An empty cart page can still list the item in recommendations ("You may also like").
+EMPTY_CART = re.compile(
+    r"your (shopping )?(bag|cart|basket) is (currently )?empty|(bag|cart|basket) is empty",
+    re.IGNORECASE,
+)
+
 CHALLENGE = re.compile(
     r"captcha|/checkpoint/|validateCaptcha|verify (yourself|access|you are)|access denied"
     r"|access is temporarily restricted|press (and|&) hold|are you a robot",
@@ -130,7 +136,10 @@ def check_cart(task: dict, final_page: dict) -> dict:
         return {"verified": False, "unverifiable": True, "error": "task has no cart_url or cart_api"}
     text = seen.pop("text", None) or ""
     match = re.search(task["cart_match"], text, re.IGNORECASE) if task.get("cart_match") else None
-    seen["verified"] = match is not None
+    empty = EMPTY_CART.search(text[:5000])
+    seen["verified"] = match is not None and empty is None
+    if empty:
+        seen["empty_cart"] = empty.group(0)
     challenge = CHALLENGE.search(f"{seen.get('url', '')} {seen.get('title', '')} {text[:3000]}")
     seen["unverifiable"] = match is None and ("error" in seen or challenge is not None)
     if challenge and match is None:

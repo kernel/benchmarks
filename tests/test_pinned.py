@@ -14,12 +14,21 @@ def _configure(site):
     return json.loads(result.stdout)
 
 
-def test_every_retail_cart_site_has_a_pinned_configuration():
+def test_measured_sites_are_pinned_and_new_sites_fall_back():
+    import tomllib
+
     from harness.definitions import load_suite
 
+    measured = tomllib.loads((CONFIGURE.parent / "sites.toml").read_text())["sites"]
     for task in load_suite("retail-cart").load_tasks():
         output = _configure(task.site)
-        assert output["browser"]["proxy_create"]["config"] == {"country": "US"}
+        if task.site in measured:
+            assert output["browser"]["proxy_create"]["config"] == {"country": "US"}
+        else:
+            # Not yet measured by hand: the arm's static config, recorded as unpinned.
+            assert output["browser"] == {} and output["provenance"]["pinned"] is False
+    # The original 16 sites were all measured.
+    assert len(measured) >= 16
 
 
 def test_personas_become_chromium_env():

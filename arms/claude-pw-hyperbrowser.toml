@@ -1,0 +1,16 @@
+# Claude Code driving a hyperbrowser browser through Playwright MCP over CDP, the
+# same agent, tools and task container as every claude-pw-* arm. The container
+# runs on a Kernel VM used only as compute; the browser is a separate session.
+# Browser: Hyperbrowser's stealth, managed US proxy and CAPTCHA solving.
+agent = "claude-code"
+model = "claude-sonnet-5-5"
+agent_version = "2.1.238"
+toolset = "playwright-mcp"
+environment = "kernel-vm-remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "hyperbrowser"
+params = { useStealth = true, useProxy = true, proxyCountry = "US", solveCaptchas = true, timeoutMinutes = 30 }

@@ -19,7 +19,7 @@ def test_provider_arms_run_on_remote_browsers():
     benchmark = load_benchmark("retail-cart-providers")
     for name in benchmark.arms:
         arm = load_arm(name)
-        assert arm.environment == "remote-browser"
+        assert arm.environment in ("remote-browser", "kernel-vm-remote-browser")
         assert arm.toolset == "playwright-mcp"
         assert arm.browser.config["provider"] in providers.PROVIDERS
 

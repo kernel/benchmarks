@@ -1,0 +1,16 @@
+# Claude Code driving a browser-use browser through Playwright MCP over CDP, the
+# same agent, tools and task container as every claude-pw-* arm. The container
+# runs on a Kernel VM used only as compute; the browser is a separate session.
+# Browser: Browser Use's cloud browser with its managed US proxy.
+agent = "claude-code"
+model = "claude-sonnet-5-5"
+agent_version = "2.1.238"
+toolset = "playwright-mcp"
+environment = "kernel-vm-remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "browser-use"
+params = { proxyCountryCode = "us", timeout = 30 }

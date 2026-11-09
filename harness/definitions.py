@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ENVIRONMENTS = {
     "kernel": "harness.environment:KernelTaskEnvironment",
     "remote-browser": "harness.environment:RemoteBrowserEnvironment",
+    "kernel-vm-remote-browser": "harness.environment:KernelVmRemoteBrowserEnvironment",
 }
 
 
@@ -32,7 +33,8 @@ class Arm:
     model: str
     toolset: str
     # "kernel" runs the task container in the Kernel browser's VM;
-    # "remote-browser" runs it on local Docker and drives the browser over CDP.
+    # "remote-browser" runs it on local Docker and drives the browser over CDP;
+    # "kernel-vm-remote-browser" does the same on a Kernel VM used as compute.
     environment: str = "kernel"
     agent_version: str | None = None
     agent_kwargs: dict[str, Any] = field(default_factory=dict)

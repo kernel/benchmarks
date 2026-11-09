@@ -215,9 +215,12 @@ class FakeProvider:
         self.calls.append(("release", session_id))
 
 
-def _remote_environment(tmp_path, monkeypatch, provider):
+def _remote_environment(tmp_path, monkeypatch, provider, cls=None):
     from harbor.environments.base import ExecResult
-    from harbor.environments.docker.docker import DockerEnvironment
+
+    cls = cls or environment.RemoteBrowserEnvironment
+    # The Harbor environment class the remote browser is layered on.
+    base = next(base for base in cls.__mro__[1:] if base.__module__.startswith("harbor."))
 
     calls = []
 
@@ -235,15 +238,15 @@ def _remote_environment(tmp_path, monkeypatch, provider):
         self._persistent_env = {}
         self.logger = logging.getLogger("test")
 
-    monkeypatch.setattr(DockerEnvironment, "__init__", init)
-    monkeypatch.setattr(DockerEnvironment, "start", start)
-    monkeypatch.setattr(DockerEnvironment, "stop", stop)
-    monkeypatch.setattr(DockerEnvironment, "exec", exec)
+    monkeypatch.setattr(base, "__init__", init)
+    monkeypatch.setattr(base, "start", start)
+    monkeypatch.setattr(base, "stop", stop)
+    monkeypatch.setattr(base, "exec", exec)
     monkeypatch.setitem(environment.providers.PROVIDERS, "fake", provider)
     (tmp_path / "kernel-config.json").write_text(
         json.dumps({"provider": "fake", "params": {"stealth": True}})
     )
-    return environment.RemoteBrowserEnvironment(environment_dir=tmp_path), calls
+    return cls(environment_dir=tmp_path), calls
 
 
 def test_remote_browser_is_created_after_the_container_and_released_after(tmp_path, monkeypatch):
@@ -267,3 +270,18 @@ def test_remote_browser_creation_failure_is_identifiable(tmp_path, monkeypatch):
     env, _ = _remote_environment(tmp_path, monkeypatch, FakeProvider(fail=True))
     with pytest.raises(environment.BrowserCreationError, match="no capacity"):
         asyncio.run(env.start(force_build=False))
+
+
+def test_kernel_vm_remote_browser_uses_the_vm_only_as_compute(tmp_path, monkeypatch):
+    provider = FakeProvider()
+    env, calls = _remote_environment(
+        tmp_path, monkeypatch, provider, environment.KernelVmRemoteBrowserEnvironment
+    )
+
+    asyncio.run(env.start(force_build=False))
+    asyncio.run(env.stop(delete=True))
+
+    assert calls[0] == "container started"
+    assert environment.CDP_URL_FILE in calls[1][0] and calls[1][1] == {"CDP_URL": "wss://remote/1"}
+    assert calls[2] == "container stopped"
+    assert provider.calls == [("create", {"stealth": True}), ("release", "remote-1")]

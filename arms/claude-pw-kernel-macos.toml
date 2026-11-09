@@ -1,0 +1,17 @@
+# Claude Code driving a kernel browser through Playwright MCP over CDP, the
+# same agent, tools and task container as every claude-pw-* arm. The container
+# runs on a Kernel VM used only as compute; the browser is a separate session.
+# Browser: Kernel's anti-detection mode plus its macOS fingerprint (closed beta): macOS
+# user agent and platform, Apple GPU renderer.
+agent = "claude-code"
+model = "claude-sonnet-5-5"
+agent_version = "2.1.238"
+toolset = "playwright-mcp"
+environment = "kernel-vm-remote-browser"
+
+[agent_kwargs]
+disable_web_search = true
+
+[browser.config]
+provider = "kernel"
+params = { stealth = true, timeout_seconds = 1800, fingerprint = { os = "macos" } }

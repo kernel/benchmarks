@@ -7,4 +7,11 @@ arms = [
   "codex-pw-steel",
   "codex-pw-hyperbrowser",
   "codex-pw-anchor",
+  "codex-pw-browser-use",
+  "claude-pw-kernel",
+  "claude-pw-kernel-macos",
+  "claude-pw-browserbase",
+  "claude-pw-browser-use",
+  "claude-pw-hyperbrowser",
+  "claude-pw-steel",
 ]

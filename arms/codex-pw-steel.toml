@@ -11,5 +11,5 @@ disable_web_search = true
 
 [browser.config]
 provider = "steel"
-# timeout is in milliseconds.
-params = { useProxy = true, solveCaptcha = true, timeout = 2700000 }
+# timeout is in milliseconds: 15 minutes, the Launch plan's maximum.
+params = { useProxy = true, solveCaptcha = true, timeout = 900000 }

@@ -1,6 +1,7 @@
 # Codex driving a Browserbase browser through Playwright MCP over CDP, with
-# Browserbase's anti-bot settings: Advanced Stealth (Scale plan), CAPTCHA
-# solving and its residential proxies. keepAlive keeps the session across the
+# Browserbase's anti-bot settings: CAPTCHA solving and its residential proxies.
+# Advanced Stealth is left out: Browserbase rejects it outside the Enterprise
+# plan ("Verified mode is only available on the Enterprise plan"). keepAlive keeps the session across the
 # start page, agent and verifier connections.
 agent = "codex"
 model = "gpt-6-luna"
@@ -18,4 +19,4 @@ provider = "browserbase"
 keepAlive = true
 timeout = 2700
 proxies = true
-browserSettings = { advancedStealth = true, solveCaptchas = true }
+browserSettings = { solveCaptchas = true }

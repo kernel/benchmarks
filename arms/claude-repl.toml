@@ -1,0 +1,16 @@
+# Same as codex-repl, but with Claude Code driving the browser only through
+# Kernel MCP's browser REPL, with a fixed stealth browser.
+agent = "claude-code"
+model = "claude-sonnet-5-5"
+agent_version = "2.1.238"
+toolset = "kernel-mcp-local"
+
+# Claude Code's own web tools would let the agent answer without the browser.
+[agent_kwargs]
+disable_web_search = true
+
+[toolset_args]
+toolsets = ["repl"]
+
+[browser]
+config = { stealth = true }
