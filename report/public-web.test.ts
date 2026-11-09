@@ -46,6 +46,8 @@ function fixture() {
           finalized: 1,
           page_verified: reward,
           webmcp_invoked: 1,
+          kernel_mcp_valid: index === 2 ? 0 : 1,
+          call_rejected: index === 1 ? 1 : 0,
         },
       },
       exception_info: index === 3 ? { type: "SetupError" } : undefined,
@@ -90,7 +92,11 @@ test("public-web reports agent time, tokens, graded outcomes and pricing coverag
   expect(stats).toMatchObject({
     recorded: 3,
     passes: 1,
+    passesByGrading: [{ grading: "end state", passes: 1, recorded: 3 }],
     pageVerified: 1,
+    toolsetChecked: 3,
+    toolsetValid: 2,
+    rejectedCallTrials: 1,
     medianAgentMs: 30000,
     medianPassedAgentMs: 20000,
     medianInputTokens: 1000,
@@ -131,6 +137,7 @@ test("public-web reports agent time, tokens, graded outcomes and pricing coverag
     [arm],
   );
   expect(report).toContain("1/4");
+  expect(report).toContain("| end state 1/3 | 3 | 2/3 | 1 |");
   expect(report).toContain("30s | 20s");
   expect(report).toContain("1000 / 200 / 100");
   expect(report).toContain("$0.2500 (1/3)");
@@ -160,9 +167,46 @@ test("all three arms render independently without pooling their attempts", () =>
   );
   for (const name of ["control", "treatment", "playwright"])
     expect(report).toContain(`| ${name} |`);
+  const mixed = arms[0].trials.map((trial) =>
+    trial.id === "trial-1"
+      ? trial
+      : { ...trial, taskGrading: "shape/range rules" },
+  );
+  expect(publicWebStats(mixed).passesByGrading).toEqual([
+    { grading: "end state", passes: 1, recorded: 1 },
+    { grading: "shape/range rules", passes: 0, recorded: 2 },
+  ]);
+  const twoTasks = arms.map((arm, index) => ({
+    ...arm,
+    trials: arm.trials.map((trial) => ({
+      ...trial,
+      taskName: index === 1 ? "another" : trial.taskName,
+    })),
+  }));
+  const perTask = renderMarkdown(
+    "public-web",
+    twoTasks.map(summarizeArm),
+    undefined,
+    {},
+    twoTasks,
+  )
+    .split("### Per task")[1]
+    .split("\n")
+    .flatMap((line) => line.match(/^\| (\w+) \| (\w+) \|/)?.slice(1, 3) ?? []);
+  expect(perTask).toEqual([
+    "Task",
+    "Arm",
+    "another",
+    "treatment",
+    "example",
+    "control",
+    "example",
+    "playwright",
+  ]);
   expect(publicWebStats([])).toMatchObject({
     recorded: 0,
     passes: 0,
+    passesByGrading: [],
     recordedCostUsd: undefined,
     medianAgentMs: undefined,
   });
