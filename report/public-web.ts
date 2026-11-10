@@ -22,6 +22,15 @@ const grading = (trial: BenchmarkTrial) => trial.taskGrading ?? "not graded";
 const gradingRank = (name: string) =>
   GRADINGS.includes(name) ? GRADINGS.indexOf(name) : GRADINGS.length;
 
+// Why a trial did not pass, other than a wrong answer. The first three are the agent's own report.
+const STOPS: [string, (trial: BenchmarkTrial) => boolean][] = [
+  ["blocked", (trial) => trial.rewards.outcome_blocked === 1],
+  ["site error", (trial) => trial.rewards.outcome_website_error === 1],
+  ["Kernel error", (trial) => trial.rewards.outcome_kernel_error === 1],
+  ["page unreadable", (trial) => trial.rewards.page_unverifiable === 1],
+  ["errored", (trial) => trial.error !== undefined],
+];
+
 function passesByGrading(trials: BenchmarkTrial[]) {
   return [...new Set(trials.map(grading))]
     .sort((a, b) => gradingRank(a) - gradingRank(b))
@@ -55,6 +64,10 @@ export function publicWebStats(trials: BenchmarkTrial[]) {
     ).length,
     adopted: trials.filter((trial) => trial.rewards.webmcp_invoked === 1)
       .length,
+    stops: STOPS.flatMap(([reason, stopped]) => {
+      const count = trials.filter(stopped).length;
+      return count ? [{ reason, count }] : [];
+    }),
     medianAgentMs: median(
       values(trials, (trial) => trial.phases.agentExecution?.durationMs),
     ),
@@ -64,7 +77,7 @@ export function publicWebStats(trials: BenchmarkTrial[]) {
         (trial) => trial.phases.agentExecution?.durationMs,
       ),
     ),
-    medianCalls: median(values(trials, (trial) => trial.metrics.toolCalls)),
+    medianCalls: median(values(trials, (trial) => trial.metrics.browserCalls)),
     medianInputTokens: median(
       values(trials, (trial) => trial.metrics.inputTokens),
     ),
@@ -109,6 +122,8 @@ const count = (value?: number) =>
   value === undefined ? "—" : String(Math.round(value));
 const seconds = (value?: number) =>
   value === undefined ? "—" : `${Math.round(value / 1000)}s`;
+const stops = (list: { reason: string; count: number }[]) =>
+  list.map((stop) => `${stop.reason} ${stop.count}`).join(" · ") || "—";
 const table = (headers: string[], rows: (string | number)[][]) =>
   [
     `| ${headers.join(" | ")} |`,
@@ -125,13 +140,14 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
         "Agent / model",
         "Pass / intended",
         "Passes by grading",
+        "Stopped by",
         "Finalized",
         "Toolset valid",
         "Rejected-call trials",
         "WebMCP used",
         "Median agent time",
         "Median agent time (passes)",
-        "Median calls",
+        "Median browser calls",
         "Median input / cached / output tokens",
         "Recorded model cost (priced / recorded)",
       ],
@@ -142,6 +158,7 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
         s.passesByGrading
           .map((g) => `${g.grading} ${g.passes}/${g.recorded}`)
           .join(" · ") || "—",
+        stops(s.stops),
         s.finalized,
         `${s.toolsetValid}/${s.toolsetChecked}`,
         s.rejectedCallTrials,
@@ -162,6 +179,7 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
         "Arm",
         "Grading",
         "Pass / recorded",
+        "Stopped by",
         "Median agent time",
         "Median agent time (passes)",
         "Median input / output tokens",
@@ -174,6 +192,7 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
           t.arm,
           t.grading.join(", ") || "unknown",
           `${t.passes}/${t.recorded}`,
+          stops(t.stops),
           seconds(t.medianAgentMs),
           seconds(t.medianPassedAgentMs),
           `${count(t.medianInputTokens)} / ${count(t.medianOutputTokens)}`,
@@ -181,6 +200,8 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
     ),
     "",
     "Pass means the task's answer rules (and page end-state check, when present) passed and the agent used its assigned browser toolset. Passes by grading splits them by how the task is checked, over recorded trials: a shape/range pass shows only a well-formed, in-range answer, and pinned-answer rules do not independently verify every returned fact. A rejected-call trial made a call its arm does not permit; the proxy blocked the call, which does not fail the trial.",
+    "",
+    "Stopped by counts trials that did not pass for a reason other than a wrong answer: blocked, site error and Kernel error are the agent's own report of what stopped it, page unreadable means the page could not be read for the end-state check, and errored trials raised before they were graded, such as a failed setup.",
     "",
     "Agent time excludes browser/container setup and verification. Arms run concurrently in the same window; repetitions are not matched pairs, so these tables make no paired speedup or significance claim. Per-task denominators count recorded trials; the arm totals retain all intended trials, including missing and infrastructure-failed trials. Cost covers only priced trials, not browser costs or unreported model charges.",
   ];

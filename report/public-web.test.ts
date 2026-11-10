@@ -48,6 +48,8 @@ function fixture() {
           webmcp_invoked: 1,
           kernel_mcp_valid: index === 2 ? 0 : 1,
           call_rejected: index === 1 ? 1 : 0,
+          outcome_blocked: index === 2 ? 1 : 0,
+          page_unverifiable: 0,
         },
       },
       exception_info: index === 3 ? { type: "SetupError" } : undefined,
@@ -97,6 +99,11 @@ test("public-web reports agent time, tokens, graded outcomes and pricing coverag
     toolsetChecked: 3,
     toolsetValid: 2,
     rejectedCallTrials: 1,
+    stops: [
+      { reason: "blocked", count: 1 },
+      { reason: "errored", count: 1 },
+    ],
+    medianCalls: 7,
     medianAgentMs: 30000,
     medianPassedAgentMs: 20000,
     medianInputTokens: 1000,
@@ -105,12 +112,10 @@ test("public-web reports agent time, tokens, graded outcomes and pricing coverag
     recordedCostUsd: 0.25,
     pricedTrials: 1,
   });
-  expect(
-    arm.trials.find((trial) => trial.id === "trial-1")?.metrics.toolCalls,
-  ).toBe(7);
-  expect(
-    arm.trials.find((trial) => trial.id === "trial-3")?.metrics.toolCalls,
-  ).toBe(0);
+  // Browser calls come from the proxy's log; the trajectory's own count is left as it is.
+  const first = arm.trials.find((trial) => trial.id === "trial-1")?.metrics;
+  expect(first?.browserCalls).toBe(7);
+  expect(first?.toolCalls).toBeUndefined();
   expect(
     arm.trials.find((trial) => trial.id === "trial-1")?.sourceRevision,
   ).toBe("a".repeat(40));
@@ -137,7 +142,10 @@ test("public-web reports agent time, tokens, graded outcomes and pricing coverag
     [arm],
   );
   expect(report).toContain("1/4");
-  expect(report).toContain("| end state 1/3 | 3 | 2/3 | 1 |");
+  expect(report).toContain(
+    "| end state 1/3 | blocked 1 · errored 1 | 3 | 2/3 | 1 |",
+  );
+  expect(report).toContain("| 1/3 | blocked 1 · errored 1 | 30s |");
   expect(report).toContain("30s | 20s");
   expect(report).toContain("1000 / 200 / 100");
   expect(report).toContain("$0.2500 (1/3)");

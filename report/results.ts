@@ -16,6 +16,7 @@ export interface BenchmarkMetrics {
   costUsd?: number;
   durationMs?: number;
   toolCalls?: number;
+  browserCalls?: number;
   start?: number;
   end?: number;
 }
@@ -311,9 +312,7 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
       start: isoSeconds(startedAt),
       end: isoSeconds(finishedAt),
       ...trajectoryMetrics(trajectoryPath),
-      ...(number(kernelMcpResult.browser_calls) === undefined
-        ? {}
-        : { toolCalls: number(kernelMcpResult.browser_calls) }),
+      browserCalls: number(kernelMcpResult.browser_calls),
     },
     phases: {
       environmentSetup: phase(result.environment_setup),

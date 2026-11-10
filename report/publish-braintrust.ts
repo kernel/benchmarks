@@ -143,6 +143,7 @@ function metricRecord(trial: BenchmarkTrial): Record<string, number> {
       end: trial.metrics.end,
       duration_ms: trial.metrics.durationMs,
       tool_calls: trial.metrics.toolCalls,
+      browser_calls: trial.metrics.browserCalls,
       prompt_tokens: promptTokens,
       prompt_cached_tokens: trial.metrics.cacheTokens,
       completion_tokens: completionTokens,
