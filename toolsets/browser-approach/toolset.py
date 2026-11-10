@@ -6,6 +6,9 @@ from pathlib import Path
 from harness.definitions import load_toolset
 from harness.tasks import read_config, write_config
 
+# The tools a suite's task gets in the treatment approach, written to the task directory.
+TOOL_BATCH = "xwebmcp-tools.js"
+
 COMMON = """
 ## Browser tools
 
@@ -28,6 +31,8 @@ PLAYWRIGHT = """
 def apply(task_dirs: list[Path], ref: str | None = None, approach: str = "control") -> None:
     if approach not in {"control", "treatment", "playwright"}:
         raise SystemExit(f"Unknown browser approach: {approach}")
+    if approach == "treatment" and not all((path / TOOL_BATCH).is_file() for path in task_dirs):
+        raise SystemExit(f"The treatment approach needs a suite that writes {TOOL_BATCH}")
     kernel = load_toolset("kernel-mcp-local")
     toolsets = (
         ["playwright"] if approach == "playwright" else ["playwright", "repl", "computer", "webmcp"]
@@ -40,7 +45,7 @@ def apply(task_dirs: list[Path], ref: str | None = None, approach: str = "contro
     )
     for task_dir in task_dirs:
         if approach == "treatment":
-            shutil.copy2(task_dir / "xwebmcp-tools.js", task_dir / "environment/bench/tools.js")
+            shutil.copy2(task_dir / TOOL_BATCH, task_dir / "environment/bench/tools.js")
         dockerfile = task_dir / "environment/Dockerfile"
         with dockerfile.open("a") as file:
             file.write(f"\nENV BROWSER_APPROACH={approach}\n")

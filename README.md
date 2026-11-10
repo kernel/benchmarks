@@ -198,18 +198,21 @@ pairs; do not interpret the per-arm medians as a paired speedup or compare diffe
 
 The agent calls `finalize` with its JSON answer. The verifier applies the pinned answer
 schema/rules and, for the cart task, reads the final page independently and compares it to
-the answer. The rules and the grader are uploaded only for verification, so the agent's
-container never holds them. A success claim alone is insufficient, and a trial with no
-permitted browser call gets zero reward. The report splits passes by how each task is graded
-(page end state, pinned rules, shape/range rules): a shape/range pass shows only a well-formed,
-in-range answer, and even pinned rules do not verify every returned fact. Audit examples before
-publishing correctness claims; this catalog is a screening set, not a held-out validation set.
+the answer. That page check covers the route, cabin, passenger count and amount due, not the
+flight numbers or whether the fare is the cheapest. The rules and the grader are uploaded only
+for verification, so the agent's container never holds them. A success claim alone is
+insufficient, and a trial with no permitted browser call gets zero reward. The report splits
+passes by how each task is graded (page end state, pinned rules, shape/range rules): a
+shape/range pass shows only a well-formed, in-range answer, and even pinned rules do not verify
+every returned fact. Audit examples before publishing correctness claims; this catalog is a
+screening set, not a held-out validation set.
 
 Reports show per-arm and per-task results, agent-only time (excluding setup and grading),
 input/cached/output tokens, browser call counts, toolset validity, rejected calls, WebMCP use,
-and recorded model cost with pricing coverage. Missing or infrastructure-failed trials remain
-in each arm's intended denominator. Raw artifacts stay local; the existing redacted Braintrust
-publisher also records source revisions and grading modes.
+what stopped trials that did not pass (bot blocks, site or Kernel errors, an unreadable page,
+errors before grading) and recorded model cost with pricing coverage. Missing or
+infrastructure-failed trials remain in each arm's intended denominator. Raw artifacts stay
+local; the existing redacted Braintrust publisher also records source revisions and grading modes.
 
 ## Extending
 

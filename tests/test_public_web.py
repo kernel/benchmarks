@@ -46,6 +46,16 @@ def test_public_suite_rejects_unknown_tasks_before_fetching(tmp_path, monkeypatc
         suite.generate(["unknown"], tmp_path)
 
 
+def test_public_suite_names_the_node_version_it_needs(monkeypatch):
+    suite = load_suite("public-web")
+    version = subprocess.CompletedProcess([], 0, stdout="v22.12.0\n")
+    monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: version)
+    with pytest.raises(SystemExit, match="22.13 or later, found v22.12.0"):
+        suite.preflight()
+    version.stdout = "v24.1.0\n"
+    suite.preflight()
+
+
 def test_suite_writes_harbor_task_and_keeps_injection_outside_image(tmp_path):
     suite = load_suite("public-web")
     source = tmp_path / "source"
@@ -145,6 +155,10 @@ def test_toolsets_preserve_finalize_and_inject_only_treatment(task_dir, tmp_path
         instructions[mode] = (dest / "steps/run/instruction.md").read_text()
     assert instructions["control"] == instructions["treatment"]
     assert "Do not discover or invoke WebMCP" in instructions["playwright"]
+    (task_dir / "xwebmcp-tools.js").unlink()
+    monkeypatch.setattr(kernel, "apply", lambda *args, **kwargs: pytest.fail("should not build"))
+    with pytest.raises(SystemExit, match="xwebmcp-tools.js"):
+        approach.apply([task_dir], ref="a" * 40, approach="treatment")
 
 
 def test_prepare_passes_pinned_refs_and_toolset_args(tmp_path, monkeypatch):

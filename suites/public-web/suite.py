@@ -33,6 +33,11 @@ def preflight() -> None:
     for command in ("git", "node"):
         if not shutil.which(command):
             raise SystemExit(f"public-web needs {command} (Node.js 22.13 or later)")
+    version = subprocess.run(
+        ["node", "--version"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    if tuple(int(part) for part in version.lstrip("v").split(".")[:2]) < (22, 13):
+        raise SystemExit(f"public-web needs Node.js 22.13 or later, found {version}")
 
 
 def generate(task_ids: list[str] | None, out_dir: Path) -> list[Path]:
