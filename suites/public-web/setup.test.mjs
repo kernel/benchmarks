@@ -9,13 +9,14 @@ const task = { intent: { domain: "example.com", start_url: "https://example.com"
 const native = { tool: { name: "native_search" }, source: { page_url: "https://example.com" } };
 const custom = { tool: { name: "search" }, source: { custom: { namespace: "example.com" }, page_url: "https://example.com" } };
 
-function stub(context, { url = "https://example.com", before = [], added = [custom], live = [native] } = {}) {
+function stub(context, { url = "https://example.com", before = [], added = [custom], live = [native], failures = 0 } = {}) {
   const calls = [];
   context.mock.method(globalThis, "fetch", async (urlString, init) => {
     const path = new URL(urlString).pathname.replace("/browsers/stub", "");
     const body = init.body && JSON.parse(init.body);
     calls.push({ path, method: init.method, body });
     if (path === "/playwright/execute") return Response.json({ success: true, result: { url, title: "Fixture" } });
+    if (path === "/webmcp/custom-tools" && init.method === "POST" && failures-- > 0) return new Response(null, { status: 503 });
     if (path === "/webmcp/custom-tools") return Response.json({ tools: init.method === "POST" ? added : before });
     if (path === "/webmcp/tools") return Response.json({ tools: live });
     assert.fail(`unexpected request ${path}`);
@@ -33,6 +34,13 @@ for (const approach of ["control", "playwright", "treatment"]) {
     if (approach === "treatment") assert.deepEqual(calls[2].body, { namespace: "example.com", source: "source", force_overwrite_namespace: true });
   });
 }
+
+test("registration is sent again after a transient failure", async context => {
+  const calls = stub(context, { live: [native, custom], failures: 1 });
+  const result = await setup(task, "treatment", "source", async () => {});
+  assert.deepEqual(result.registered, ["search"]);
+  assert.equal(calls.filter(call => call.path === "/webmcp/custom-tools" && call.method === "POST").length, 2);
+});
 
 for (const [name, options, approach, message] of [
   ["off-domain redirect", { url: "https://example.com.attacker.invalid" }, "control", /outside the task's domain/],

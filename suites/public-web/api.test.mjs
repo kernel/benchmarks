@@ -29,7 +29,7 @@ test("page code is retried after a dropped connection", async context => {
   assert.deepEqual(calls, ["POST", "POST"]);
 });
 
-test("adding custom tools is never retried", async context => {
+test("a request that changes the browser is not retried unless the caller allows it", async context => {
   const calls = stub(context, [new Response(null, { status: 503 }), Response.json({ tools: [] })]);
   await assert.rejects(api("/webmcp/custom-tools", { namespace: "example.com", source: "[]" }), /HTTP 503/);
   assert.deepEqual(calls, ["POST"]);

@@ -43,3 +43,21 @@ test("page evidence goes to the independent grader and unreadable pages do not p
   assert.equal(unreadable.rewards.page_unverifiable, 1);
   assert.equal(unreadable.pageError, "browser closed");
 });
+
+test("a page read that navigation interrupts is tried again", async () => {
+  const checked = { ...task, intent: { check: {} } };
+  const interrupted = new Error("page.evaluate: Execution context was destroyed, most likely because of a navigation");
+  const waits = [];
+  let reads = 0;
+  const settled = await score(checked, success, async () => {
+    if (++reads < 3) throw interrupted;
+    return { url: "https://example.com/cart" };
+  }, () => ({ outcome: "correct", end_state: true }), async ms => waits.push(ms));
+  assert.equal(settled.rewards.page_verified, 1);
+  assert.deepEqual(waits, [3000, 3000]);
+  reads = 0;
+  const never = await score(checked, success, async () => { reads++; throw interrupted; }, correct, async () => {});
+  assert.equal(reads, 3);
+  assert.equal(never.rewards.reward, 0);
+  assert.equal(never.rewards.page_unverifiable, 1);
+});

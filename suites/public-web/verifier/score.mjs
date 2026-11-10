@@ -2,13 +2,21 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
-export async function score(task, report, readEndState, gradeAnswer) {
+export async function score(task, report, readEndState, gradeAnswer, wait = sleep) {
   let endState = null;
   let pageError = null;
   if (task.intent.check && report?.outcome === "success") {
-    try { endState = { output: await readEndState(task.intent.check) }; }
-    catch (error) { pageError = error.message; }
+    // The agent can finish while its last action is still loading a page, so a read that
+    // navigation interrupts is tried again on the new page.
+    for (let attempt = 1; !endState && !pageError; attempt++) {
+      try { endState = { output: await readEndState(task.intent.check) }; }
+      catch (error) {
+        if (attempt < 3 && /Execution context was destroyed/.test(error.message)) await wait(3000);
+        else pageError = error.message;
+      }
+    }
   }
   const grade = gradeAnswer(task.intent, task.schema, report?.evidence, endState);
   const passed = report?.outcome === "success" && grade.outcome === "correct" && !pageError;

@@ -20,9 +20,10 @@ return { url: page.url(), title: await page.title() };
   const before = (await api("/webmcp/custom-tools")).tools;
   if (before.length) throw new Error("The fresh browser already has custom tools");
   if (approach === "treatment") {
+    // Overwriting the namespace replaces a batch an earlier attempt registered, so retrying is safe.
     const added = await api("/webmcp/custom-tools", {
       namespace: task.intent.domain, source: toolSource, force_overwrite_namespace: true,
-    });
+    }, { retry: true });
     const names = added.tools.map(tool => tool.tool.name).sort();
     if (JSON.stringify(names) !== JSON.stringify([...task.registered].sort())) throw new Error("The registered tool set differs from the pinned batch");
   }
