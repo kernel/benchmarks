@@ -137,8 +137,8 @@ initial page, fixtures and grading. Control and treatment have identical browser
 Playwright-only instruction prohibits WebMCP, REPL, computer actions, raw CDP and direct HTTP.
 The stdio proxy filters the advertised tools and rejects calls outside the arm's allowlist,
 calls on another session, WebMCP registration/removal and, in the Playwright-only arm, code
-that calls WebMCP. A rejected call never reaches the browser, so it is reported and does not
-fail the trial. The proxy also withholds the server's own usage instructions, which rank
+that refers to `webmcp`. A rejected call never reaches the browser, so it is reported and does
+not fail the trial. The proxy also withholds the server's own usage instructions, which rank
 WebMCP first and name tools the arms lack, and in the Playwright-only arm cuts the WebMCP
 guidance from the tool's descriptions, so that arm is not told to use what it cannot. This
 is not an arbitrary-code sandbox: instructions and trajectory review still matter for calls

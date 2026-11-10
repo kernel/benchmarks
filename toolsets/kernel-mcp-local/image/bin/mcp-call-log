@@ -19,7 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-WEBMCP_IN_CODE = re.compile(r"\b(?:listTools|invokeTool)\s*\(")
+# Any reference to the `webmcp` helper, however its methods are reached, or a call by method name.
+WEBMCP_IN_CODE = re.compile(r"\bwebmcp\b|\b(?:listTools|invokeTool)\s*\(")
 WEBMCP = re.compile(r"webmcp", re.IGNORECASE)
 # `webmcp` listed after the other names a description says are in scope.
 WEBMCP_IN_SCOPE = re.compile(r"(`),\s*(?:and\s+)?(?:browser-wide\s+)?`webmcp`(?:\s+helpers)?")
@@ -44,7 +45,10 @@ def rejection(
     if name == "webmcp" and arguments.get("action") not in {"list", "invoke"}:
         return "This arm permits only the list and invoke actions of webmcp."
     if "webmcp" not in allowed and WEBMCP_IN_CODE.search(str(arguments.get("code") or "")):
-        return "This arm does not permit WebMCP. Use Playwright DOM/UI actions instead."
+        return (
+            "This arm does not permit WebMCP, so code may not mention webmcp. "
+            "Use Playwright DOM/UI actions instead."
+        )
     return None
 
 
@@ -116,6 +120,15 @@ def main() -> int:
         def to_server() -> None:
             for line in sys.stdin.buffer:
                 message = parse(line)
+                if allowed and not message and line.strip():
+                    # Anything else, such as a batch, would carry calls past the checks below.
+                    refusal = {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32600, "message": "Send one JSON-RPC message per line."},
+                    }
+                    emit((json.dumps(refusal) + "\n").encode())
+                    continue
                 method = message.get("method")
                 params = message.get("params") or {}
                 started, started_at = time.monotonic(), datetime.now(UTC).isoformat()
@@ -149,8 +162,9 @@ def main() -> int:
         threading.Thread(target=to_server, daemon=True).start()
         for line in child.stdout:
             message = parse(line)
+            # A message with a method is the server's own request, whose ID may match a pending call.
             with lock:
-                request = pending.pop(message.get("id"), None) if message else None
+                request = None if "method" in message else pending.pop(message.get("id"), None)
             if request:
                 method, params, started, started_at = request
                 if method == "tools/call":

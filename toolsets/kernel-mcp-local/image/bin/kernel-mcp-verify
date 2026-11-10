@@ -17,6 +17,7 @@ from typing import Any
 
 LOGS = Path("/var/log/kernel-mcp")
 VERIFIER = Path("/logs/verifier")
+WEBMCP_IN_CODE = re.compile(r"\bwebmcp\b|\b(?:listTools|invokeTool)\s*\(")
 TOOLS = {
     "playwright": "execute_playwright_code",
     "repl": "browser_repl",
@@ -31,10 +32,27 @@ def read_calls(path: Path) -> list[dict[str, Any]]:
     calls = []
     for line in path.read_text().splitlines():
         try:
-            calls.append(json.loads(line))
+            call = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if isinstance(call, dict):
+            calls.append(call)
     return calls
+
+
+# The proxy logs arguments as the agent sent them, so they may have any shape.
+def arguments(call: dict[str, Any]) -> dict[str, Any]:
+    value = call.get("arguments")
+    return value if isinstance(value, dict) else {}
+
+
+def code(call: dict[str, Any]) -> str:
+    return str(arguments(call).get("code") or "")
+
+
+def session_id(call: dict[str, Any]) -> str | None:
+    value = arguments(call).get("session_id")
+    return value if isinstance(value, str) else None
 
 
 def check_calls(
@@ -43,10 +61,10 @@ def check_calls(
     allowed = {TOOLS[name] for name in enabled if name in TOOLS}
     forwarded = [call for call in calls if not call.get("rejected")]
     browser_calls = [call for call in forwarded if call.get("tool") in allowed]
-    sessions = {(call.get("arguments") or {}).get("session_id") for call in browser_calls}
+    sessions = {session_id(call) for call in browser_calls}
     invoked = any(
-        (call.get("tool") == "webmcp" and (call.get("arguments") or {}).get("action") == "invoke")
-        or re.search(r"\binvokeTool\s*\(", (call.get("arguments") or {}).get("code", ""))
+        (call.get("tool") == "webmcp" and arguments(call).get("action") == "invoke")
+        or re.search(r"\binvokeTool\s*\(", code(call))
         for call in browser_calls
     )
     checks = {
@@ -56,12 +74,7 @@ def check_calls(
     if approach:
         checks["allowed_tools_only"] = all(call.get("tool") in allowed for call in forwarded)
     if approach == "playwright":
-        checks["no_webmcp"] = not any(
-            re.search(
-                r"\b(?:listTools|invokeTool)\s*\(", (call.get("arguments") or {}).get("code", "")
-            )
-            for call in browser_calls
-        )
+        checks["no_webmcp"] = not any(WEBMCP_IN_CODE.search(code(call)) for call in browser_calls)
     return {
         "valid": all(checks.values()),
         "checks": checks,
