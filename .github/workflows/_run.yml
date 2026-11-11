@@ -35,9 +35,12 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    # Repository and organization secrets; a repository secret overrides an
-    # organization secret with the same name. Every benchmark sees all of
-    # them; suites and agents only read the ones they need.
+    # The model provider keys (Anthropic, OpenAI, OpenRouter) are secrets of
+    # the benchmarks environment, so only this job can read them. No AWS role
+    # trusts this environment. Other secrets are repository or organization
+    # secrets. Every benchmark sees all of them; suites and agents only read
+    # the ones they need.
+    environment: benchmarks
     env:
       BENCHMARK_NAME: ${{ inputs.benchmark }}
       KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
