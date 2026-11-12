@@ -42,6 +42,7 @@ export interface BenchmarkTrial {
   rewards: Record<string, number>;
   scores: Record<string, number>;
   error?: string;
+  errorType?: string;
   errorClass?: "infra";
   metrics: BenchmarkMetrics;
   phases: {
@@ -248,6 +249,33 @@ function trialScores(
   return scores;
 }
 
+// Harbor records a failed agent run on its step and still runs the verifier, so the trial
+// has rewards. These are the agent's own outcome and stay scored. Anything else, such as
+// a rejected credential, a rate limit or a crashed CLI, kept the agent from a fair run.
+const AGENT_OUTCOMES = new Set([
+  "AgentTimeoutError",
+  "ContextWindowExceededError",
+  "OutputTokenExceededError",
+  "AgentSafetyRefusalError",
+]);
+
+function stepFailure(
+  steps: unknown[],
+  rewards: Record<string, number>,
+): unknown {
+  const exceptions = steps
+    .map((step) => object(step).exception_info)
+    .filter(Boolean);
+  if (Object.keys(rewards).length === 0) return exceptions[0];
+  // The agent finished its work before the failure, so the grade stands.
+  if (rewards.finalized === 1 || selectPrimaryReward(rewards)?.value === 1)
+    return undefined;
+  return exceptions.find(
+    (exception) =>
+      !AGENT_OUTCOMES.has(string(object(exception).exception_type) ?? ""),
+  );
+}
+
 function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
   const result = readJson(join(trialDir, "result.json"));
   const config = object(result.config);
@@ -257,17 +285,13 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
   const steps = array(result.step_results);
   const rewards = trialRewards(result, trialDir);
   const exceptionFile = join(trialDir, "exception.txt");
-  const stepException =
-    Object.keys(rewards).length === 0
-      ? steps.map((step) => object(step).exception_info).find(Boolean)
-      : undefined;
-  const error = errorText(
+  const exception =
     result.exception_info ??
-      stepException ??
-      (existsSync(exceptionFile)
-        ? readFileSync(exceptionFile, "utf8")
-        : undefined),
-  );
+    stepFailure(steps, rewards) ??
+    (existsSync(exceptionFile)
+      ? readFileSync(exceptionFile, "utf8")
+      : undefined);
+  const error = errorText(exception);
   const startedAt = string(result.started_at);
   const finishedAt = string(result.finished_at);
   const trajectoryPath = join(trialDir, "steps/run/agent/trajectory.json");
@@ -302,6 +326,9 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
     rewards,
     scores: trialScores(rewards, error !== undefined),
     error,
+    errorType:
+      string(object(exception).exception_type) ??
+      string(object(exception).type),
     errorClass: error === undefined ? undefined : "infra",
     metrics: {
       inputTokens: sumStepMetric(steps, "n_input_tokens"),
