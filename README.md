@@ -122,9 +122,11 @@ ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whet
 
 ### `public-web`
 
-Compare three browser approaches on eight signed-out tasks across six sites. The tasks cover
+Compare three browser approaches on nine signed-out tasks across six sites. The tasks cover
 repository facts and search, hotel rules, flight search and cart preparation, retail search,
-and comparing game prices. No logins, payment details or purchases.
+and comparing game prices. No logins, payment details or purchases. One task,
+`github-latest-release`, is a placebo: the treatment arm gets GitHub's tools, but none of them
+reads a release, so a difference between control and treatment there is noise.
 
 | Arm | Browser tools | Injected tools |
 |---|---|---|
@@ -155,7 +157,7 @@ Prepare all arms without credentials, then smoke-test one task before a full pai
 ```bash
 uv run bench prepare public-web --out /tmp/public-web
 uv run bench run public-web --tasks github-merged-pr --attempts 1 --concurrency 1
-gh workflow run public-web.yml -f tasks=all -f attempts=5 -f concurrency=3
+gh workflow run public-web.yml -f tasks=all -f attempts=5 -f concurrency=5
 ```
 
 #### Switching models and providers
@@ -192,27 +194,51 @@ model access is implied by selecting a preset, and live model availability still
 provider account. Add another MCP-capable Harbor agent by adding a file under `runners/`, rather
 than duplicating the three browser arms. Credentials stay in environment variables, not presets.
 
-The full workflow defaults to 120 trials (8 tasks × 3 arms × 5 attempts). Each arm runs
-concurrently in the same window, with fresh browsers. These are not randomized matched
-pairs; do not interpret the per-arm medians as a paired speedup or compare different run dates.
+The full workflow defaults to 135 trials (9 tasks × 3 arms × 5 attempts), each with a fresh
+browser. Control and treatment differ only in the injected tools, so `benchmarks/public-web.toml`
+pairs them: for every task and attempt, one control and one treatment trial run back to back,
+in an order that is random but balanced within each task and recorded in the run manifest.
+`--concurrency` is then the number of pairs running at once. The Playwright-only arm changes
+more than the tools, so it stays one independent Harbor job in the same window. `--unpaired`
+runs all three arms that way, which is faster and gives no paired comparison. Do not compare
+different run dates.
+
+Two limits come from xwebmcp's own runner. Its turn cap becomes a cap on browser calls, which
+the call proxy enforces for every agent: once a trial has made that many, further calls are
+refused and the agent is told to finalize. Its per-trial spend cap, `max_cost_usd` in
+[suites/public-web/source.toml](suites/public-web/source.toml), is applied by the report,
+because Harbor's agents cannot all stop on spend: a trial that cost more is not a pass. It
+only applies to trials whose model cost Harbor could price. Each task's timeout and limits
+are in the run manifest.
 
 The agent calls `finalize` with its JSON answer. The verifier applies the pinned answer
 schema/rules and, for the cart task, reads the final page independently and compares it to
 the answer. That page check covers the route, cabin, passenger count and amount due, not the
 flight numbers or whether the fare is the cheapest. The rules and the grader are uploaded only
 for verification, so the agent's container never holds them. A success claim alone is
-insufficient, and a trial with no permitted browser call gets zero reward. The report splits
-passes by how each task is graded (page end state, pinned rules, shape/range rules): a
-shape/range pass shows only a well-formed, in-range answer, and even pinned rules do not verify
-every returned fact. Audit examples before publishing correctness claims; this catalog is a
-screening set, not a held-out validation set.
+insufficient, and a trial with no permitted browser call gets zero reward. The report's
+headline is the checked pass rate: passes on the tasks graded by page end state or pinned
+rules, with a 95% interval. Passes on shape/range tasks are reported apart as format-only,
+because they show a well-formed, in-range answer and nothing about whether it is true. Even
+pinned rules do not verify every returned fact. Audit examples before publishing correctness
+claims; this catalog is a screening set, not a held-out validation set.
 
 Reports show per-arm and per-task results, agent-only time (excluding setup and grading),
-input/cached/output tokens, browser call counts, toolset validity, rejected calls, WebMCP use,
-what stopped trials that did not pass (bot blocks, site or Kernel errors, an unreadable page,
-errors before grading) and recorded model cost with pricing coverage. Missing or
-infrastructure-failed trials remain in each arm's intended denominator. Raw artifacts stay
-local; the existing redacted Braintrust publisher also records source revisions and grading modes.
+input/cached/output tokens, browser call counts, toolset validity, rejected calls and recorded
+model cost with pricing coverage. For the paired arms they add, per task, how many pairs passed
+in both arms or in one only, the speedup over both-pass pairs with a sign test, and whether the
+two answers agree where the task defines that. Tool use is split into injected and native
+tools, and into trials that tried one and trials where an invocation succeeded. What stopped
+trials that did not pass is listed by cause: bot blocks, site or Kernel errors, an unreadable
+page, a used-up call cap, overspending, and errors. A trial is errored, not failed, when it
+never got a fair run: a failed setup, or a model provider that rejected or rate-limited the
+agent. Errored trials stay in every denominator and mark the run incomplete.
+
+The call proxy sees only MCP calls, so the report also reads each agent's trajectory and flags
+trials with a tool call that reached the task's site, the Kernel API or the task's files
+outside the arm's browser tools, such as `curl` from the shell. A flag does not change a score;
+review flagged trials before publishing. Raw artifacts stay local; the existing redacted
+Braintrust publisher also records source revisions and grading modes.
 
 ## Extending
 
@@ -272,12 +298,12 @@ Create `suites/<name>/suite.py` with:
 - `preflight()`: checks external dependencies before any browser is created.
 - `generate(task_ids, out_dir)`: writes Harbor tasks and returns their directories. The tasks should run on the browser Harbor provides (`KERNEL_SESSION_ID`, `/harbor/kernel/connection.json`) and leave tool wiring to toolsets.
 
-Then add `benchmarks/<name>.toml` and a workflow that calls `_run.yml`.
+Then add `benchmarks/<name>.toml` and a workflow that calls `_run.yml`. To compare two arms that differ in one thing, list them in the benchmark as `pairs = [["baseline-arm", "candidate-arm"]]`: their trials then run as back-to-back matched pairs, and each trial directory gets a `pair.json` a report can match on.
 
 ## Layout
 
 ```
-benchmarks/      suite + arms per benchmark
+benchmarks/      suite + arms per benchmark, and which arms run as matched pairs
 arms/            browser approach + runner preset (or inline agent settings)
 runners/         reusable agent, model, version and agent options
 suites/          task sets adapted to Harbor

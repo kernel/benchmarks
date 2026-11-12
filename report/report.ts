@@ -143,7 +143,7 @@ export function renderMarkdown(
   lines.push(
     "",
     publicWeb
-      ? "Infrastructure failures remain in the intended-task denominator."
+      ? "Errored trials remain in every denominator."
       : "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator.",
     "",
   );

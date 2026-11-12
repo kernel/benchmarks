@@ -55,6 +55,10 @@ export interface BenchmarkTrial {
   kernelMcpSha?: string;
   sourceRevision?: string;
   taskGrading?: string;
+  // What the suite's verifier recorded about the task, and the trial's matched pair.
+  taskInfo: JsonObject;
+  pair?: JsonObject;
+  dir: string;
   trajectoryPath?: string;
   startedAt?: string;
   finishedAt?: string;
@@ -96,31 +100,31 @@ export interface ArmSummary {
   configuration?: string;
 }
 
-function object(value: unknown): JsonObject {
+export function object(value: unknown): JsonObject {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as JsonObject)
     : {};
 }
 
-function array(value: unknown): unknown[] {
+export function array(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-function string(value: unknown): string | undefined {
+export function string(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function number(value: unknown): number | undefined {
+export function number(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
 }
 
-function readJson(path: string): JsonObject {
+export function readJson(path: string): JsonObject {
   return object(JSON.parse(readFileSync(path, "utf8")));
 }
 
-function readJsonIfPresent(path: string): JsonObject {
+export function readJsonIfPresent(path: string): JsonObject {
   return existsSync(path) ? readJson(path) : {};
 }
 
@@ -302,6 +306,7 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
   const sourceInfo = readJsonIfPresent(
     join(trialDir, "steps/run/verifier/source.json"),
   );
+  const pairPath = join(trialDir, "pair.json");
 
   return {
     arm,
@@ -351,6 +356,9 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
     kernelMcpSha: string(kernelMcpResult.kernel_mcp_server_sha),
     sourceRevision: string(sourceInfo.sha),
     taskGrading: string(sourceInfo.grading),
+    taskInfo: sourceInfo,
+    pair: existsSync(pairPath) ? readJson(pairPath) : undefined,
+    dir: trialDir,
     trajectoryPath: existsSync(trajectoryPath) ? trajectoryPath : undefined,
     startedAt,
     finishedAt,
