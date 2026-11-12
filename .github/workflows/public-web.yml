@@ -21,8 +21,8 @@ on:
         description: Trials per task and arm
         default: "5"
       concurrency:
-        description: Concurrent trials per arm
-        default: "3"
+        description: Concurrent control/treatment pairs, and concurrent Playwright-only trials
+        default: "5"
 
 permissions:
   contents: read

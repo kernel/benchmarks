@@ -43,6 +43,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     run_command.add_argument("--attempts", type=int, default=1, help="trials per task and arm")
     run_command.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    run_command.add_argument(
+        "--unpaired",
+        action="store_true",
+        help="run the benchmark's paired arms as independent Harbor jobs instead",
+    )
 
     args = parser.parse_args(argv)
     arms = _split(args.arms)
@@ -76,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
             args.attempts,
             runner=args.runner,
             model=args.model,
+            unpaired=args.unpaired,
         )
     for arm, status in statuses.items():
         print(f"{arm}: harbor exited {status} -> {args.jobs_dir / f'{arm}-{args.run_id}'}")

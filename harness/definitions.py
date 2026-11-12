@@ -47,6 +47,8 @@ class Benchmark:
     name: str
     suite: str
     arms: list[str]
+    # (baseline, candidate) arms whose trials run as back-to-back matched pairs.
+    pairs: list[tuple[str, str]] = field(default_factory=list)
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -57,7 +59,14 @@ def _read(path: Path) -> dict[str, Any]:
 
 def load_benchmark(name: str) -> Benchmark:
     data = _read(ROOT / "benchmarks" / f"{name}.toml")
-    return Benchmark(name=name, suite=data["suite"], arms=list(data["arms"]))
+    arms = list(data["arms"])
+    pairs = [tuple(pair) for pair in data.get("pairs", [])]
+    paired = [arm for pair in pairs for arm in pair]
+    if any(len(pair) != 2 for pair in pairs) or set(paired) - set(arms):
+        raise SystemExit(f"{name}: each pair names two of the benchmark's arms")
+    if len(paired) != len(set(paired)):
+        raise SystemExit(f"{name}: an arm can be in only one pair")
+    return Benchmark(name=name, suite=data["suite"], arms=arms, pairs=pairs)
 
 
 def load_runner(name: str) -> Runner:

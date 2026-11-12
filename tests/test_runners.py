@@ -119,7 +119,8 @@ def test_cli_passes_runner_and_model_to_the_harness(command, tmp_path, monkeypat
     if command == "prepare":
         args += ["--out", str(tmp_path)]
     assert cli.main(args) == 0
-    assert calls == [{"runner": "pi", "model": "openai/gpt-5.4"}]
+    expected = {"runner": "pi", "model": "openai/gpt-5.4"}
+    assert calls == [expected if command == "prepare" else {**expected, "unpaired": False}]
 
 
 def test_run_records_resolved_runner_and_refuses_reusing_an_experiment_id(tmp_path, monkeypatch):
@@ -131,6 +132,11 @@ def test_run_records_resolved_runner_and_refuses_reusing_an_experiment_id(tmp_pa
         PreparedArm(load_arm(name, runner="pi", model="openai/gpt-5.4"), tmp_path / name, {})
         for name in load_benchmark("public-web").arms
     ]
+    for item in prepared:
+        (item.dataset / "one").mkdir(parents=True)
+        (item.dataset / "one/task.toml").write_text(
+            "[metadata.limits]\nbrowser_calls = 40\n[[steps]]\nagent = { timeout_sec = 600.0 }\n"
+        )
     monkeypatch.setattr(module, "prepare", lambda *args, **kwargs: prepared)
     commands = []
 
@@ -149,10 +155,13 @@ def test_run_records_resolved_runner_and_refuses_reusing_an_experiment_id(tmp_pa
         1,
         runner="pi",
         model="openai/gpt-5.4",
+        unpaired=True,
     )
     assert len(statuses) == len(commands) == 3
     manifest = json.loads((tmp_path / "run-model-test.json").read_text())
     for entry in manifest.values():
+        assert entry["limits"] == {"one": {"agent_timeout_sec": 600.0, "browser_calls": 40}}
+        assert entry["pairs"] is None
         assert entry["runner"] == {
             "preset": "pi",
             "agent": "pi",
