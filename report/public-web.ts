@@ -95,6 +95,8 @@ const OUTSIDE_BROWSER: [string, RegExp][] = [
     /\/opt\/bench|\/tests\b|start\.json|tools\.js/,
   ],
 ];
+// Codex calls its tools from a script, so one call can hold several: tools.<name>(...).
+const SCRIPTED_TOOL = /\btools\.(\w+)\s*\(/g;
 const HTTP_IN_CODE =
   /\bfetch\s*\(|XMLHttpRequest|\b(?:page|context|browser)\.request\b|\brequest\.(?:get|post|fetch)\s*\(/;
 
@@ -114,8 +116,16 @@ export function reviewFlags(trial: BenchmarkTrial): string[] {
       const name = string(object(call).function_name) ?? "";
       const args = object(object(call).arguments);
       const text = JSON.stringify(args);
+      const scripted = [...text.matchAll(SCRIPTED_TOOL)].map(
+        (match) => match[1],
+      );
       // Every browser tool takes the session ID, however the agent names its MCP tools.
-      if (BROWSER_TOOL.test(name) || "session_id" in args) {
+      if (
+        BROWSER_TOOL.test(name) ||
+        "session_id" in args ||
+        (scripted.length > 0 &&
+          scripted.every((tool) => BROWSER_TOOL.test(tool)))
+      ) {
         if (playwrightOnly && HTTP_IN_CODE.test(text))
           flags.add("HTTP request from page code");
         continue;

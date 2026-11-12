@@ -410,6 +410,36 @@ test("trials that reach the site outside the browser tools are flagged for revie
         toolsets: ["playwright"],
         calls: [browser("return await (await fetch('/api')).json()")],
       },
+      // Codex runs its tools from a script: browser tools there are browser calls, a shell is not.
+      {
+        calls: [
+          {
+            function_name: "exec",
+            arguments: {
+              input:
+                'const r=await tools.mcp__kernel__execute_playwright_code({session_id:"s",code:"await page.goto(\'https://example.com/a\')"});\ntext(r);',
+            },
+          },
+          {
+            function_name: "exec",
+            arguments: {
+              input:
+                'text(await tools.exec_command({cmd:"cat /run/kernel-mcp/session-id"}));',
+            },
+          },
+        ],
+      },
+      {
+        calls: [
+          {
+            function_name: "exec",
+            arguments: {
+              input:
+                'text(await tools.exec_command({cmd:"curl https://example.com/a"}));',
+            },
+          },
+        ],
+      },
       // Unlabelled MCP calls are still browser calls, and other arms may fetch from the page.
       {
         calls: [
@@ -437,6 +467,11 @@ test("trials that reach the site outside the browser tools are flagged for revie
     ],
     ["HTTP request from page code"],
     [],
+    [
+      "HTTP client outside the browser tools",
+      "task site named outside the browser tools",
+    ],
+    [],
   ]);
   const report = renderMarkdown(
     "public-web",
@@ -446,7 +481,7 @@ test("trials that reach the site outside the browser tools are flagged for revie
     [arm],
   );
   expect(report).toContain("- playwright trial-1: HTTP client outside");
-  expect(publicWebStats(arm.trials).flagged).toHaveLength(3);
+  expect(publicWebStats(arm.trials).flagged).toHaveLength(4);
 });
 
 test("matched pairs compare speed over both-pass pairs and passes over discordant ones", () => {
