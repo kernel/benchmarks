@@ -62,11 +62,28 @@ def check_calls(
     forwarded = [call for call in calls if not call.get("rejected")]
     browser_calls = [call for call in forwarded if call.get("tool") in allowed]
     sessions = {session_id(call) for call in browser_calls}
-    invoked = any(
-        (call.get("tool") == "webmcp" and arguments(call).get("action") == "invoke")
-        or re.search(r"\binvokeTool\s*\(", code(call))
+    invocations = [
+        call.get("webmcp") if isinstance(call.get("webmcp"), dict) else {}
         for call in browser_calls
-    )
+        if call.get("tool") == "webmcp" and arguments(call).get("action") == "invoke"
+    ]
+    # An invocation from code names no tool the proxy can see, so it is counted apart.
+    from_code = any(re.search(r"\binvokeTool\s*\(", code(call)) for call in browser_calls)
+    tools: dict[str, dict[str, Any]] = {}
+    for entry in invocations:
+        tool = tools.setdefault(
+            entry.get("tool") or "unknown",
+            {"custom": entry.get("custom"), "invocations": 0, "completed": 0},
+        )
+        tool["invocations"] += 1
+        tool["completed"] += bool(entry.get("ok"))
+
+    def used(custom: bool, completed: bool) -> bool:
+        return any(
+            entry.get("custom") is custom and (entry.get("ok") or not completed)
+            for entry in invocations
+        )
+
     checks = {
         "used_kernel_mcp": bool(browser_calls),
         "used_assigned_browser": bool(session) and sessions == {session},
@@ -85,7 +102,14 @@ def check_calls(
         "browser_call_ms": sum(call.get("duration_ms") or 0 for call in browser_calls),
         "browser_call_errors": sum(bool(call.get("is_error")) for call in browser_calls),
         "rejected_calls": len(calls) - len(forwarded),
-        "webmcp_invoked": bool(invoked),
+        "call_cap_hit": any(call.get("capped") for call in calls),
+        "webmcp_invoked": bool(invocations) or from_code,
+        "webmcp_invoked_from_code": from_code,
+        "injected_tool_invoked": used(True, False),
+        "injected_tool_completed": used(True, True),
+        "native_tool_invoked": used(False, False),
+        "native_tool_completed": used(False, True),
+        "webmcp_tools": tools,
     }
 
 
@@ -108,7 +132,16 @@ def main() -> int:
         rewards = json.loads(reward_path.read_text())
         rewards["kernel_mcp_valid"] = float(result["valid"])
         if approach:
-            rewards["webmcp_invoked"] = float(result["webmcp_invoked"])
+            for name in (
+                "webmcp_invoked",
+                "webmcp_invoked_from_code",
+                "injected_tool_invoked",
+                "injected_tool_completed",
+                "native_tool_invoked",
+                "native_tool_completed",
+                "call_cap_hit",
+            ):
+                rewards[name] = float(result[name])
             rewards["call_rejected"] = float(result["rejected_calls"] > 0)
             if not result["valid"]:
                 rewards["reward"] = 0.0

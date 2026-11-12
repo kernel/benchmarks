@@ -46,12 +46,15 @@ def apply(task_dirs: list[Path], ref: str | None = None, approach: str = "contro
     for task_dir in task_dirs:
         if approach == "treatment":
             shutil.copy2(task_dir / TOOL_BATCH, task_dir / "environment/bench/tools.js")
+        config = read_config(task_dir)
+        config.setdefault("metadata", {})["browser_approach"] = approach
+        write_config(task_dir, config)
         dockerfile = task_dir / "environment/Dockerfile"
         with dockerfile.open("a") as file:
             file.write(f"\nENV BROWSER_APPROACH={approach}\n")
             file.write(
                 f"ENV KERNEL_BENCH_ALLOWED_TOOLS={','.join(kernel.TOOLS[name] for name in toolsets)}\n"
             )
-        config = read_config(task_dir)
-        config.setdefault("metadata", {})["browser_approach"] = approach
-        write_config(task_dir, config)
+            cap = config["metadata"].get("limits", {}).get("browser_calls")
+            if cap:
+                file.write(f"ENV KERNEL_BENCH_MAX_BROWSER_CALLS={int(cap)}\n")

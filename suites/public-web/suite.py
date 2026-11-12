@@ -63,13 +63,19 @@ def generate(task_ids: list[str] | None, out_dir: Path) -> list[Path]:
             ],
             check=True,
         )
-        return [_write(materialized / name, out_dir / name, source, sha) for name in selected]
+        return [
+            _write(materialized / name, out_dir / name, source, sha, source_config["max_cost_usd"])
+            for name in selected
+        ]
 
 
-def _write(task_source: Path, task_dir: Path, source: Path, sha: str) -> Path:
+def _write(task_source: Path, task_dir: Path, source: Path, sha: str, max_cost_usd: float) -> Path:
     task = json.loads((task_source / "task.json").read_text())
     intent = task["intent"]
     task["source_sha"] = sha
+    # xwebmcp's runner stops an agent at the task's turn cap. Harbor's agents have no common
+    # turn limit, so the call proxy stops browser calls at the same number instead.
+    task["limits"] = {"browser_calls": intent["max_turns"], "cost_usd": max_cost_usd}
     if task_dir.exists():
         shutil.rmtree(task_dir)
     environment = task_dir / "environment"
@@ -118,6 +124,7 @@ def _write(task_source: Path, task_dir: Path, source: Path, sha: str) -> Path:
             "xwebmcp_sha": sha,
             "grading": task["grading"],
             "stage": intent["stage"],
+            "limits": task["limits"],
         },
         "environment": {
             "build_timeout_sec": 1200.0,

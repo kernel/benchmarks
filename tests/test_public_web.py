@@ -26,7 +26,8 @@ def test_public_arms_change_only_the_approach():
     assert all(len(arm.toolset_ref) == 40 for arm in arms)
     source = tomllib.loads((ROOT / "suites/public-web/source.toml").read_text())
     assert len(source["revision"]) == 40
-    assert len(source["tasks"]) == 8
+    assert len(source["tasks"]) == 9
+    assert source["max_cost_usd"] > 0
 
 
 def test_attempts_and_agent_options_reach_harbor(tmp_path):
@@ -74,6 +75,7 @@ def test_suite_writes_harbor_task_and_keeps_injection_outside_image(tmp_path):
             "start_url": "https://example.com",
             "stage": "find",
             "trial_timeout_sec": 600,
+            "max_turns": 40,
             "rules": [{"path": "answer", "equals": "pinned-answer"}],
         },
         "prompt": "Return JSON.",
@@ -83,9 +85,10 @@ def test_suite_writes_harbor_task_and_keeps_injection_outside_image(tmp_path):
     }
     (task_source / "task.json").write_text(json.dumps(task))
     (task_source / "tools.js").write_text("[]")
-    task_dir = suite._write(task_source, tmp_path / "tasks/test", source, "a" * 40)
+    task_dir = suite._write(task_source, tmp_path / "tasks/test", source, "a" * 40, 2.0)
     config = tomllib.loads((task_dir / "task.toml").read_text())
     assert config["source"] == "public-web"
+    assert config["metadata"]["limits"] == {"browser_calls": 40, "cost_usd": 2.0}
     assert config["metadata"]["xwebmcp_sha"] == "a" * 40
     assert config["environment"]["mcp_servers"][0]["name"] == "bench"
     assert (task_dir / "xwebmcp-tools.js").exists()
@@ -111,6 +114,7 @@ def test_suite_writes_harbor_task_and_keeps_injection_outside_image(tmp_path):
     }
     tests = task_dir / "steps/run/tests"
     assert "pinned-answer" in (tests / "task.json").read_text()
+    assert json.loads((tests / "task.json").read_text())["limits"]["browser_calls"] == 40
     assert (tests / "upstream/bench/grade.mjs").exists()
     assert {"score.mjs", "api.mjs"} <= {path.name for path in tests.iterdir()}
     assert "node /tests/score.mjs" in (tests / "test.sh").read_text()
@@ -132,6 +136,7 @@ def test_toolsets_preserve_finalize_and_inject_only_treatment(task_dir, tmp_path
     with (task_dir / "task.toml").open("a") as file:
         file.write(
             '\n[[environment.mcp_servers]]\nname = "bench"\ntransport = "stdio"\ncommand = "finalize"\n'
+            "\n[metadata.limits]\nbrowser_calls = 7\n"
         )
     instructions = {}
     for mode in ("control", "treatment", "playwright"):
@@ -152,6 +157,7 @@ def test_toolsets_preserve_finalize_and_inject_only_treatment(task_dir, tmp_path
         )
         assert f"KERNEL_BENCH_ALLOWED_TOOLS={expected}\n" in dockerfile
         assert f"BROWSER_APPROACH={mode}" in dockerfile
+        assert "KERNEL_BENCH_MAX_BROWSER_CALLS=7\n" in dockerfile
         instructions[mode] = (dest / "steps/run/instruction.md").read_text()
     assert instructions["control"] == instructions["treatment"]
     assert "Do not discover or invoke WebMCP" in instructions["playwright"]
@@ -225,6 +231,22 @@ def test_call_checks_detect_session_tool_and_playwright_violations():
     hybrid = ["playwright", "repl", "computer", "webmcp"]
     result = check([webmcp], hybrid, "s", "treatment")
     assert result["valid"] and result["webmcp_invoked"]
+    # Without the proxy's record of the tool, an invocation counts as use and nothing more.
+    assert not result["injected_tool_invoked"] and not result["native_tool_invoked"]
+    invocations = [
+        {**webmcp, "webmcp": {"tool": "search", "custom": True, "status": "error", "ok": False}},
+        {**webmcp, "webmcp": {"tool": "site_search", "custom": False, "ok": True}},
+    ]
+    result = check(invocations, hybrid, "s", "treatment")
+    assert result["injected_tool_invoked"] and not result["injected_tool_completed"]
+    assert result["native_tool_invoked"] and result["native_tool_completed"]
+    assert result["webmcp_tools"]["search"] == {"custom": True, "invocations": 1, "completed": 0}
+    from_code = {**call, "arguments": {"session_id": "s", "code": "await webmcp.invokeTool(r)"}}
+    result = check([from_code], hybrid, "s", "treatment")
+    assert result["webmcp_invoked_from_code"] and not result["injected_tool_invoked"]
+    capped = {**call, "rejected": True, "capped": True}
+    assert check([call, capped], hybrid, "s", "control")["call_cap_hit"]
+    assert not check([call], hybrid, "s", "control")["call_cap_hit"]
     # Calls the proxy rejected never reached the browser: counted, not invalidating.
     rejected = [
         {"tool": "webmcp", "arguments": {"session_id": "s", "action": "list_custom"}},
@@ -339,6 +361,87 @@ for line in sys.stdin:
     calls = list(map(json.loads, log.read_text().splitlines()))
     assert len(calls) == 6
     assert sum(call["rejected"] for call in calls) == 3
+
+
+def test_call_proxy_names_invoked_tools_and_stops_at_the_call_cap(tmp_path):
+    listed = {
+        "tools": [
+            {
+                "tool_ref": "ref-custom",
+                "tool": {"name": "search"},
+                "source": {"custom": {"id": "c"}},
+            },
+            {"tool_ref": "ref-native", "tool": {"name": "site_search"}, "source": {"frame": None}},
+        ]
+    }
+    server = tmp_path / "server.py"
+    server.write_text(f"""import sys, json
+for line in sys.stdin:
+    request = json.loads(line)
+    arguments = request["params"]["arguments"]
+    if arguments.get("action") == "list":
+        text = {json.dumps(json.dumps(listed))}
+    elif arguments.get("tool_ref") == "ref-custom":
+        text = json.dumps({{"status": "completed", "output": {{"status": "error"}}}})
+    elif arguments.get("tool_ref") == "ref-native":
+        text = json.dumps({{"status": "awaiting_submission", "output": {{}}}})
+    else:
+        text = "error: unknown tool_ref"
+    print(json.dumps({{"jsonrpc": "2.0", "id": request["id"], "result": {{"content": [{{"type": "text", "text": text}}]}}}}), flush=True)
+""")
+    calls = [
+        {"action": "list"},
+        {"action": "invoke", "tool_ref": "ref-custom"},
+        {"action": "invoke", "tool_ref": "ref-native"},
+        {"action": "invoke", "tool_ref": "stale"},
+        {"action": "list"},
+    ]
+    requests = [
+        {
+            "jsonrpc": "2.0",
+            "id": index,
+            "method": "tools/call",
+            "params": {"name": "webmcp", "arguments": {"session_id": "s", **arguments}},
+        }
+        for index, arguments in enumerate(calls)
+    ]
+    log = tmp_path / "calls.jsonl"
+    # A call an earlier proxy forwarded counts toward the cap of four.
+    log.write_text(json.dumps({"tool": "webmcp", "rejected": False}) + "\n")
+    result = subprocess.run(
+        [sys.executable, str(BIN / "mcp-call-log"), str(log), sys.executable, str(server)],
+        input="\n".join(json.dumps(request) for request in requests) + "\n",
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env={
+            **os.environ,
+            "KERNEL_BENCH_ALLOWED_TOOLS": "webmcp",
+            "KERNEL_BENCH_MAX_BROWSER_CALLS": "4",
+            "KERNEL_SESSION_ID": "s",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    # Rejections are logged as they happen, ahead of slower forwarded calls.
+    logged = sorted(
+        map(json.loads, log.read_text().splitlines()[1:]), key=lambda entry: entry["started_at"]
+    )
+    assert [entry.get("webmcp") for entry in logged] == [
+        None,
+        {"tool": "search", "custom": True, "status": "completed", "ok": False},
+        {"tool": "site_search", "custom": False, "status": "awaiting_submission", "ok": True},
+        None,
+        None,
+    ]
+    assert [entry["rejected"] for entry in logged] == [False, False, False, True, True]
+    assert logged[3]["capped"] and "capped" not in logged[0]
+    responses = {r["id"]: r["result"] for r in map(json.loads, result.stdout.splitlines())}
+    assert responses[3]["isError"] and "finalize" in responses[3]["content"][0]["text"]
+    check = runpy.run_path(str(BIN / "kernel-mcp-verify"))["check_calls"]
+    summary = check(logged, ["webmcp"], "s", "treatment")
+    assert summary["valid"] and summary["call_cap_hit"] and summary["browser_calls"] == 3
+    assert summary["injected_tool_invoked"] and not summary["injected_tool_completed"]
+    assert summary["native_tool_completed"]
 
 
 def test_call_proxy_blocks_webmcp_from_code_in_the_playwright_arm(tmp_path):

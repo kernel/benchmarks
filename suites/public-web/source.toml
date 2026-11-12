@@ -10,4 +10,10 @@ tasks = [
   "delta-cart-main-classic",
   "target-search-first-result",
   "steam-compare-series",
+  # No tool at this revision reads a release, so treatment should gain nothing here.
+  "github-latest-release",
 ]
+
+# A trial whose recorded model cost exceeds this is not counted as a pass. It matches the
+# default per-trial spend cap of xwebmcp's own runner.
+max_cost_usd = 2.0

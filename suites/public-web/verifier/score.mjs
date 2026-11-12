@@ -45,7 +45,10 @@ async function main() {
   const outputs = {
     "reward.json": result.rewards, "grade.json": result.grade, "end-state.json": result.endState,
     "finalize.json": report, "setup.json": readJson("/run/public-web/setup.json"),
-    "source.json": { sha: task.source_sha, grading: task.grading, task: task.intent.id },
+    "source.json": {
+      sha: task.source_sha, grading: task.grading, task: task.intent.id, domain: task.intent.domain,
+      stage: task.intent.stage, agreement: task.intent.agreement ?? null, limits: task.limits ?? null,
+    },
     "page-error.json": result.pageError,
   };
   for (const [file, value] of Object.entries(outputs)) {
