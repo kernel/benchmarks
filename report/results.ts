@@ -40,6 +40,7 @@ export interface BenchmarkTrial {
   agentConfigHash: string;
   model?: string;
   rewards: Record<string, number>;
+  rawRewards: Record<string, number>;
   scores: Record<string, number>;
   error?: string;
   errorType?: string;
@@ -64,6 +65,12 @@ export interface BenchmarkTrial {
   finishedAt?: string;
 }
 
+export interface PlannedTask {
+  attempts: number;
+  source?: string;
+  metadata: JsonObject;
+}
+
 export interface BenchmarkArm {
   name: string;
   path: string;
@@ -76,6 +83,7 @@ export interface BenchmarkArm {
   nErroredTrials: number;
   nCancelledTrials: number;
   nRetries: number;
+  taskPlan: Record<string, PlannedTask>;
   trials: BenchmarkTrial[];
 }
 
@@ -280,18 +288,35 @@ function stepFailure(
   );
 }
 
-function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
+export function overSpend(
+  trial: Pick<BenchmarkTrial, "source" | "taskInfo" | "metrics">,
+): boolean {
+  const limit = number(object(trial.taskInfo.limits).cost_usd);
+  const cost = trial.metrics.costUsd;
+  return (
+    trial.source === "public-web" &&
+    limit !== undefined &&
+    cost !== undefined &&
+    cost > limit
+  );
+}
+
+function parseTrial(
+  arm: string,
+  trialDir: string,
+  taskPlan: Record<string, PlannedTask>,
+): BenchmarkTrial {
   const result = readJson(join(trialDir, "result.json"));
   const config = object(result.config);
   const agentConfig = object(config.agent);
   const agentInfo = object(result.agent_info);
   const modelInfo = object(agentInfo.model_info);
   const steps = array(result.step_results);
-  const rewards = trialRewards(result, trialDir);
+  const rawRewards = trialRewards(result, trialDir);
   const exceptionFile = join(trialDir, "exception.txt");
   const exception =
     result.exception_info ??
-    stepFailure(steps, rewards) ??
+    stepFailure(steps, rawRewards) ??
     (existsSync(exceptionFile)
       ? readFileSync(exceptionFile, "utf8")
       : undefined);
@@ -303,23 +328,38 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
     join(trialDir, "steps/run/verifier/kernel-mcp-result.json"),
   );
 
-  const sourceInfo = readJsonIfPresent(
-    join(trialDir, "steps/run/verifier/source.json"),
-  );
+  const taskName = (
+    string(result.task_name) ??
+    string(object(config.task).name) ??
+    basename(trialDir).split("__", 1)[0]
+  ).replace(/^(?:clawbench|public-web)\//, "");
+  const planned = taskPlan[taskName];
+  const metadata = planned?.metadata ?? {};
+  const sourceInfo: JsonObject = {
+    ...metadata,
+    sha: metadata.xwebmcp_sha,
+    domain: metadata.site,
+    ...readJsonIfPresent(join(trialDir, "steps/run/verifier/source.json")),
+  };
+  const source =
+    string(result.source) ??
+    string(object(config.task).source) ??
+    planned?.source ??
+    "clawbench";
+  const costUsd = sumStepMetric(steps, "cost_usd");
+  const rewards =
+    rawRewards.reward !== undefined &&
+    overSpend({ source, taskInfo: sourceInfo, metrics: { costUsd } })
+      ? { ...rawRewards, reward: 0 }
+      : rawRewards;
   const pairPath = join(trialDir, "pair.json");
 
   return {
     arm,
     id: string(result.id) ?? basename(trialDir),
-    taskName:
-      string(result.task_name)?.replace(/^(?:clawbench|public-web)\//, "") ??
-      string(object(config.task).name) ??
-      basename(trialDir).split("__", 1)[0],
+    taskName,
     trialName: string(result.trial_name) ?? basename(trialDir),
-    source:
-      string(result.source) ??
-      string(object(config.task).source) ??
-      "clawbench",
+    source,
     agent: string(agentInfo.name) ?? string(agentConfig.name) ?? "unknown",
     agentVersion:
       string(agentInfo.version) ?? string(object(agentConfig.kwargs).version),
@@ -329,6 +369,7 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
       .slice(0, 8),
     model: string(modelInfo.name) ?? string(agentConfig.model_name),
     rewards,
+    rawRewards,
     scores: trialScores(rewards, error !== undefined),
     error,
     errorType:
@@ -339,7 +380,7 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
       inputTokens: sumStepMetric(steps, "n_input_tokens"),
       cacheTokens: sumStepMetric(steps, "n_cache_tokens"),
       outputTokens: sumStepMetric(steps, "n_output_tokens"),
-      costUsd: sumStepMetric(steps, "cost_usd"),
+      costUsd,
       durationMs: durationMs(startedAt, finishedAt),
       start: isoSeconds(startedAt),
       end: isoSeconds(finishedAt),
@@ -353,7 +394,9 @@ function parseTrial(arm: string, trialDir: string): BenchmarkTrial {
       verifier: phase(object(steps.at(-1)).verifier),
     },
     expectedBrowserSessionId: string(kernelMcpResult.expected_session_id),
-    kernelMcpSha: string(kernelMcpResult.kernel_mcp_server_sha),
+    kernelMcpSha:
+      string(kernelMcpResult.kernel_mcp_server_sha) ??
+      string(metadata.kernel_mcp_server_sha),
     sourceRevision: string(sourceInfo.sha),
     taskGrading: string(sourceInfo.grading),
     taskInfo: sourceInfo,
@@ -381,12 +424,29 @@ export function parseArmSpec(spec: string): ArmInput {
 export function readBenchmarkArm(input: ArmInput): BenchmarkArm {
   const configPath = join(input.path, "config.json");
   const resultPath = join(input.path, "result.json");
-  if (!existsSync(configPath) || !existsSync(resultPath)) {
+  const planPath = join(input.path, "task-plan.json");
+  if (
+    !existsSync(planPath) &&
+    (!existsSync(configPath) || !existsSync(resultPath))
+  ) {
     throw new Error(`${input.path} is not a completed Harbor job directory`);
   }
 
-  const config = readJson(configPath);
-  const result = readJson(resultPath);
+  const config = readJsonIfPresent(configPath);
+  const result = readJsonIfPresent(resultPath);
+  const taskPlan = Object.fromEntries(
+    Object.entries(readJsonIfPresent(planPath)).map(([task, value]) => {
+      const entry = object(value);
+      return [
+        task,
+        {
+          attempts: number(entry.attempts) ?? 0,
+          source: string(entry.source),
+          metadata: object(entry.metadata),
+        },
+      ];
+    }),
+  );
   const stats = object(result.stats);
   const trials = readdirSync(input.path, { withFileTypes: true })
     .filter(
@@ -394,7 +454,9 @@ export function readBenchmarkArm(input: ArmInput): BenchmarkArm {
         entry.isDirectory() &&
         existsSync(join(input.path, entry.name, "result.json")),
     )
-    .map((entry) => parseTrial(input.name, join(input.path, entry.name)))
+    .map((entry) =>
+      parseTrial(input.name, join(input.path, entry.name), taskPlan),
+    )
     .sort((left, right) => left.taskName.localeCompare(right.taskName));
 
   return {
@@ -406,13 +468,18 @@ export function readBenchmarkArm(input: ArmInput): BenchmarkArm {
     jobName: string(config.job_name) ?? basename(input.path),
     startedAt: string(result.started_at),
     finishedAt: string(result.finished_at),
-    nTotalTrials: number(result.n_total_trials) ?? trials.length,
+    nTotalTrials:
+      number(result.n_total_trials) ??
+      (Object.keys(taskPlan).length
+        ? Object.values(taskPlan).reduce((sum, task) => sum + task.attempts, 0)
+        : trials.length),
     nCompletedTrials: number(stats.n_completed_trials) ?? trials.length,
     nErroredTrials:
       number(stats.n_errored_trials) ??
       trials.filter((trial) => trial.error).length,
     nCancelledTrials: number(stats.n_cancelled_trials) ?? 0,
     nRetries: number(stats.n_retries) ?? 0,
+    taskPlan,
     trials,
   };
 }

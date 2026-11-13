@@ -8,7 +8,7 @@ import {
   readBenchmarkArm,
   summarizeArm,
 } from "./results";
-import { renderPublicWeb, summarizePublicWeb } from "./public-web";
+import { isPublicWeb, renderPublicWeb, summarizePublicWeb } from "./public-web";
 
 interface Options {
   arms: string[];
@@ -103,15 +103,10 @@ export function renderMarkdown(
     ];
     lines.push(
       "",
-      `> [!WARNING]\n> Incomplete benchmark: ${reasons.join(", ")}. Scores below include only completed Harbor results.`,
+      `> [!WARNING]\n> Incomplete benchmark: ${reasons.join(", ")}. Only recorded trials can contribute passes.`,
     );
   }
-  const publicWeb =
-    arms &&
-    (title === "public-web" ||
-      arms.some((arm) =>
-        arm.trials.some((trial) => trial.source === "public-web"),
-      ));
+  const publicWeb = arms && (title === "public-web" || isPublicWeb(arms));
   if (publicWeb) {
     lines.push("", renderPublicWeb(arms));
   } else {
@@ -172,10 +167,7 @@ function main(): void {
     arms: summaries,
     statuses: options.statuses,
     publication,
-    ...(options.title === "public-web" ||
-    arms.some((arm) =>
-      arm.trials.some((trial) => trial.source === "public-web"),
-    )
+    ...(options.title === "public-web" || isPublicWeb(arms)
       ? { publicWeb: summarizePublicWeb(arms) }
       : {}),
   };

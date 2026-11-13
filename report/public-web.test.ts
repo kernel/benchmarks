@@ -1,5 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readBenchmarkArm, summarizeArm } from "./results";
@@ -149,15 +155,15 @@ test("public-web reports agent time, tokens, graded outcomes and pricing coverag
     {},
     [arm],
   );
-  // The headline is the checked pass rate with its interval, beside recorded/intended.
+  // This legacy job has no task plan to classify its missing trial.
   expect(report).toContain(
-    "| 3/4 | 1/3 (6–79%) | 0/0 | end state 1/3 | blocked 1 · errored (SetupError) 1 | 0 |",
+    "| 3/4 | — | — | end state 1/? · unknown 0/? | blocked 1 · errored (SetupError) 1 | 0 |",
   );
   expect(report).toContain(
     "| control | 3 | 2/3 | 1 | 0 / 0 | 0 / 0 | 0 | 30s |",
   );
   expect(report).toContain(
-    "| 1/3 (6–79%) | blocked 1 · errored (SetupError) 1 | 30s |",
+    "| end state | — | blocked 1 · errored (SetupError) 1 | 30s |",
   );
   expect(report).toContain("30s | 20s");
   expect(report).toContain("1000 / 200 / 100");
@@ -368,6 +374,187 @@ test("spend over the task's limit and a used-up call cap are reported, and only 
       { reason: "over spend limit", count: 1 },
     ],
   });
+});
+
+test("spend-adjusted scores agree across the report, summary and Braintrust", () => {
+  const dir = job([{ cost: 2.5 }, { cost: 2 }, {}]);
+  rmSync(join(dir, "trial-0/steps/run/verifier/source.json"));
+  writeFileSync(
+    join(dir, "task-plan.json"),
+    JSON.stringify({
+      search: {
+        attempts: 3,
+        source: "public-web",
+        metadata: { grading: "pinned rules", limits: { cost_usd: 2 } },
+      },
+    }),
+  );
+  const arm = readBenchmarkArm({ name: "control", path: dir });
+  expect(publicWebStats(arm.trials).passes).toBe(2);
+  expect(summarizeArm(arm).lenient).toBe(2);
+  const events = buildExperimentEvents([arm], "spend-test")
+    .filter((event) => event.span_attributes?.type === "eval")
+    .sort((a, b) =>
+      String(a.metadata?.trialName).localeCompare(
+        String(b.metadata?.trialName),
+      ),
+    );
+  expect(events.map((event) => event.output)).toMatchObject([
+    { reward: 0 },
+    { reward: 1 },
+    { reward: 1 },
+  ]);
+  expect(events.map((event) => event.scores?.reward)).toEqual([0, 1, 1]);
+  expect(events.map((event) => event.metadata?.verdict)).toEqual([
+    "false_negative",
+    "correct",
+    "correct",
+  ]);
+  expect(events[0].metadata?.rawRewards).toMatchObject({ reward: 1 });
+  expect(events[0].metadata?.scores).toMatchObject({ accuracy: 0 });
+  expect(
+    renderMarkdown("public-web", [summarizeArm(arm)], undefined, {}, [arm]),
+  ).toContain("| 3/3 | 2/3");
+
+  const path = join(dir, "trial-0/result.json");
+  const legacy = JSON.parse(readFileSync(path, "utf8"));
+  legacy.source = "clawbench";
+  writeFileSync(path, JSON.stringify(legacy));
+  expect(
+    readBenchmarkArm({ name: "control", path: dir }).trials.find(
+      (trial) => trial.id === "trial-0",
+    )?.rewards.reward,
+  ).toBe(1);
+});
+
+test("planned tasks retain setup failures and missing attempts in every denominator", () => {
+  const dir = job([
+    { task: "github-merged-pr" },
+    { task: "booking-house-rules", reward: 0, stepError: "RuntimeError" },
+    { task: "booking-house-rules", reward: 0, stepError: "RuntimeError" },
+  ]);
+  for (const index of [1, 2]) {
+    rmSync(join(dir, `trial-${index}/steps/run/verifier`), { recursive: true });
+    const path = join(dir, `trial-${index}/result.json`);
+    const result = JSON.parse(readFileSync(path, "utf8"));
+    delete result.verifier_result;
+    writeFileSync(path, JSON.stringify(result));
+  }
+  writeFileSync(
+    join(dir, "result.json"),
+    JSON.stringify({ n_total_trials: 6 }),
+  );
+  writeFileSync(
+    join(dir, "task-plan.json"),
+    JSON.stringify({
+      "github-merged-pr": {
+        attempts: 2,
+        source: "public-web",
+        metadata: { grading: "pinned rules" },
+      },
+      "booking-house-rules": {
+        attempts: 2,
+        source: "public-web",
+        metadata: {
+          grading: "pinned rules",
+          xwebmcp_sha: "a".repeat(40),
+          site: "booking.com",
+        },
+      },
+      "target-search-first-result": {
+        attempts: 2,
+        source: "public-web",
+        metadata: { grading: "shape/range rules" },
+      },
+    }),
+  );
+  const arms = ["control", "treatment", "playwright"].map((name) =>
+    readBenchmarkArm({ name, path: dir }),
+  );
+  for (const summary of summarizePublicWeb(arms)) {
+    expect(summary).toMatchObject({
+      intended: 6,
+      recorded: 3,
+      checked: { passes: 1, recorded: 3, intended: 4, interval: wilson(1, 4) },
+      formatOnly: {
+        passes: 0,
+        recorded: 0,
+        intended: 2,
+        interval: wilson(0, 2),
+      },
+    });
+    expect(
+      summary.tasks.find((task) => task.task === "booking-house-rules"),
+    ).toMatchObject({
+      grading: ["pinned rules"],
+      intended: 2,
+      recorded: 2,
+      passes: 0,
+    });
+    expect(
+      summary.tasks.find((task) => task.task === "target-search-first-result"),
+    ).toMatchObject({
+      grading: ["shape/range rules"],
+      intended: 2,
+      recorded: 0,
+      passes: 0,
+    });
+  }
+  expect(
+    arms[0].trials.find((trial) => trial.taskName === "booking-house-rules"),
+  ).toMatchObject({
+    taskGrading: "pinned rules",
+    sourceRevision: "a".repeat(40),
+    taskInfo: { domain: "booking.com" },
+  });
+  const report = renderMarkdown(
+    "public-web",
+    arms.map(summarizeArm),
+    undefined,
+    {},
+    arms,
+  );
+  expect(report).toContain("| 3/6 | 1/4 (5–70%) | 0/2 |");
+  expect(report).toContain(
+    "target-search-first-result | control | shape/range rules | 0/2",
+  );
+  expect(report).toContain("Incomplete benchmark");
+
+  for (const index of [0, 1, 2])
+    rmSync(join(dir, `trial-${index}`), { recursive: true });
+  rmSync(join(dir, "config.json"));
+  rmSync(join(dir, "result.json"));
+  const empty = readBenchmarkArm({ name: "control", path: dir });
+  const [summary] = summarizePublicWeb([empty]);
+  expect(summary).toMatchObject({
+    intended: 6,
+    recorded: 0,
+    checked: { passes: 0, intended: 4, interval: wilson(0, 4) },
+    formatOnly: { passes: 0, intended: 2, interval: wilson(0, 2) },
+  });
+  expect(summary.tasks).toHaveLength(3);
+  expect(summarizeArm(empty).complete).toBe(false);
+  expect(
+    renderMarkdown("Benchmark", [summarizeArm(empty)], undefined, {}, [empty]),
+  ).toContain("| 0/6 | 0/4");
+});
+
+test("legacy incomplete jobs do not report partial denominators or unknown grading as format-only", () => {
+  const arm = readBenchmarkArm({ name: "control", path: fixture() });
+  const [summary] = summarizePublicWeb([arm]);
+  expect(summary.checked).toMatchObject({
+    intended: null,
+    interval: undefined,
+  });
+  expect(summary.tasks[0]).toMatchObject({
+    intended: null,
+    interval: undefined,
+  });
+  const unknown = publicWebStats(
+    arm.trials.map((trial) => ({ ...trial, taskGrading: undefined })),
+  );
+  expect(unknown.formatOnly.recorded).toBe(0);
+  expect(unknown.checked.interval).toBeUndefined();
 });
 
 test("tool use separates injected from native tools and tries from successes", () => {

@@ -61,7 +61,7 @@ class ArmJob:
             "n_total_trials": total,
             "stats": {"n_completed_trials": 0, "n_errored_trials": 0, "n_retries": 0},
         }
-        self.dir.mkdir(parents=True)
+        self.dir.mkdir(parents=True, exist_ok=True)
         self.scratch.mkdir()
         (self.dir / "config.json").write_text(json.dumps({"job_name": self.dir.name}))
         self._write()

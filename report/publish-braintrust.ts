@@ -207,6 +207,7 @@ function trialMetadata(trial: BenchmarkTrial): Record<string, unknown> {
     taskGrading: trial.taskGrading,
     errorClass: trial.errorClass,
     rewards: trial.rewards,
+    rawRewards: trial.rawRewards,
     durationMs: trial.metrics.durationMs,
   };
 }

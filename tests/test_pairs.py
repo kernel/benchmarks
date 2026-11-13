@@ -52,7 +52,9 @@ def test_paired_arms_run_back_to_back_and_fill_harbor_shaped_job_directories(tmp
     for item in prepared:
         for task in ("alpha", "beta"):
             (item.dataset / task).mkdir(parents=True)
-            (item.dataset / task / "task.toml").write_text("")
+            (item.dataset / task / "task.toml").write_text(
+                'source = "public-web"\n[metadata]\ngrading = "pinned rules"\n'
+            )
     monkeypatch.setattr(module, "prepare", lambda *args, **kwargs: prepared)
     started = []
 
@@ -61,6 +63,13 @@ def test_paired_arms_run_back_to_back_and_fill_harbor_shaped_job_directories(tmp
         option = lambda name: command[command.index(name) + 1]  # noqa: E731
         task, job = Path(option("--path")), Path(option("--jobs-dir")) / option("--job-name")
         assert (option("--n-attempts"), option("--n-concurrent")) == ("1", "1")
+        task_plan = json.loads(
+            (tmp_path / "jobs" / f"{task.parent.name}-r1/task-plan.json").read_text()
+        )
+        assert task_plan == {
+            name: {"attempts": 2, "source": "public-web", "metadata": {"grading": "pinned rules"}}
+            for name in ("alpha", "beta")
+        }
         started.append((task.parent.name, option("--job-name")))
         trial = job / f"{task.name}__{len(started)}"
         trial.mkdir(parents=True)

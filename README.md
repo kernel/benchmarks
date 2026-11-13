@@ -75,7 +75,7 @@ Harbor writes one job directory per arm under `jobs/`, containing rewards, traje
 
 `--tasks` takes comma-separated task IDs or `all`. `--concurrency` sets concurrent trials per arm. `--toolset-ref` builds a toolset from a specific git ref, e.g. a Kernel MCP server branch. `--runner` selects a preset from `runners/` and `--model` overrides its model, for every selected arm. Both also work with `bench prepare`; a model override alone does not change the runner.
 
-The run also writes `jobs/run-<id>.json`, which maps each arm to its job directory, exit status, resolved runner/model/version/options, and the browser settings and site guidance each task got. Use a unique `--run-id` for each experiment; an existing run manifest is never overwritten.
+The run also writes `jobs/run-<id>.json`, which maps each arm to its job directory, exit status, resolved runner/model/version/options, and the browser settings and site guidance each task got. Each job's `task-plan.json` records task metadata and intended attempt counts before Harbor starts, so reporting does not depend on the verifier having run. Use a unique `--run-id` for each experiment; an existing run manifest is never overwritten.
 
 A run of two arms on two tasks (Red Cross and Indeed) produced this summary:
 
@@ -208,8 +208,10 @@ the call proxy enforces for every agent: once a trial has made that many, furthe
 refused and the agent is told to finalize. Its per-trial spend cap, `max_cost_usd` in
 [suites/public-web/source.toml](suites/public-web/source.toml), is applied by the report,
 because Harbor's agents cannot all stop on spend: a trial that cost more is not a pass. It
-only applies to trials whose model cost Harbor could price. Each task's timeout and limits
-are in the run manifest.
+only applies to trials whose model cost Harbor could price. The shared result reader applies
+it to Markdown, JSON summaries and Braintrust scores; original grader rewards remain in the
+local artifacts and Braintrust's `rawRewards` metadata. Each task's timeout and limits are in
+the run manifest.
 
 The agent calls `finalize` with its JSON answer. The verifier applies the pinned answer
 schema/rules and, for the cart task, reads the final page independently and compares it to
@@ -232,7 +234,10 @@ tools, and into trials that tried one and trials where an invocation succeeded. 
 trials that did not pass is listed by cause: bot blocks, site or Kernel errors, an unreadable
 page, a used-up call cap, overspending, and errors. A trial is errored, not failed, when it
 never got a fair run: a failed setup, or a model provider that rejected or rate-limited the
-agent. Errored trials stay in every denominator and mark the run incomplete.
+agent. Errored and missing trials stay in the intended denominators and mark the run incomplete.
+Task grading comes from the saved plan even when every attempt fails setup. Older incomplete
+runs without that metadata show unavailable rates instead of guessing denominators, and unknown
+grading is not counted as format-only.
 
 The call proxy sees only MCP calls, so the report also reads each agent's trajectory and flags
 trials with a tool call that reached the task's site, the Kernel API or the task's files

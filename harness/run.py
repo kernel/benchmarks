@@ -80,6 +80,18 @@ def task_limits(dataset: Path) -> dict[str, dict]:
     return limits
 
 
+def task_plan(dataset: Path, attempts: int) -> dict[str, dict]:
+    plan = {}
+    for task_dir in sorted(path for path in dataset.iterdir() if path.is_dir()):
+        config = read_config(task_dir).unwrap()
+        plan[task_dir.name] = {
+            "attempts": attempts,
+            "source": config.get("source"),
+            "metadata": config.get("metadata", {}),
+        }
+    return plan
+
+
 def run(
     benchmark_name: str,
     arm_names: list[str] | None,
@@ -155,6 +167,13 @@ def run(
         raise SystemExit(
             f"{manifest_path} already exists; use a new --run-id for each experiment"
         ) from None
+
+    for item in prepared:
+        job_dir = Path(manifest[item.arm.name]["job_dir"])
+        job_dir.mkdir()
+        (job_dir / "task-plan.json").write_text(
+            json.dumps(task_plan(item.dataset, attempts), indent=2)
+        )
 
     processes = {}
     for item in prepared:

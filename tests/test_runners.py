@@ -141,6 +141,11 @@ def test_run_records_resolved_runner_and_refuses_reusing_an_experiment_id(tmp_pa
     commands = []
 
     def start(command, **kwargs):
+        job_name = command[command.index("--job-name") + 1]
+        task_plan = json.loads((tmp_path / job_name / "task-plan.json").read_text())
+        assert task_plan == {
+            "one": {"attempts": 1, "source": None, "metadata": {"limits": {"browser_calls": 40}}}
+        }
         commands.append(command)
         return SimpleNamespace(wait=lambda: 0)
 

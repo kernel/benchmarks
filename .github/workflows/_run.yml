@@ -124,7 +124,7 @@ jobs:
           # An arm without a status was still running when the step timed out.
           while IFS=$'\t' read -r name status job_dir; do
             statuses+=(--status "$name=$status")
-            [[ -f "$job_dir/result.json" ]] && arms+=(--arm "$name=$job_dir")
+            [[ -f "$job_dir/result.json" || -f "$job_dir/task-plan.json" ]] && arms+=(--arm "$name=$job_dir")
           done < <(jq -r 'to_entries[] | [.key, (.value.status // 124), .value.job_dir] | @tsv' "$RUN_FILE")
           ((${#arms[@]} > 0)) || { echo "No Harbor job completed" >&2; exit 1; }
 

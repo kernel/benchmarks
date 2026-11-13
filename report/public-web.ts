@@ -6,6 +6,7 @@ import {
   median,
   number,
   object,
+  overSpend,
   readJson,
   readJsonIfPresent,
   string,
@@ -13,15 +14,8 @@ import {
 } from "./results";
 import { signTest, wilson } from "./stats";
 
-// A trial that cost more than the task's spend limit is not a pass. Harbor's agents cannot
-// all stop on spend, so the limit is applied here, to trials whose cost was recorded.
-const overSpend = (trial: BenchmarkTrial) => {
-  const limit = number(object(trial.taskInfo.limits).cost_usd);
-  const cost = trial.metrics.costUsd;
-  return limit !== undefined && cost !== undefined && cost > limit;
-};
 const passed = (trial: BenchmarkTrial) =>
-  !trial.error && trial.rewards.reward === 1 && !overSpend(trial);
+  !trial.error && trial.rewards.reward === 1;
 const values = (
   trials: BenchmarkTrial[],
   pick: (trial: BenchmarkTrial) => number | undefined,
@@ -139,30 +133,69 @@ export function reviewFlags(trial: BenchmarkTrial): string[] {
   return [...flags].sort();
 }
 
+interface ExpectedTrials {
+  counts: Map<string, number>;
+  total: number | null;
+}
+
 function passesByGrading(
   trials: BenchmarkTrial[],
   gradings: Map<string, string>,
+  expected: ExpectedTrials,
 ) {
-  const grading = (trial: BenchmarkTrial) =>
-    gradings.get(trial.taskName) ?? "not graded";
-  return [...new Set(trials.map(grading))]
-    .sort((a, b) => gradingRank(a) - gradingRank(b))
-    .map((name) => {
-      const graded = trials.filter((trial) => grading(trial) === name);
-      return {
-        grading: name,
-        passes: graded.filter(passed).length,
-        recorded: graded.length,
-      };
-    });
+  const tasks = new Set([
+    ...expected.counts.keys(),
+    ...trials.map((trial) => trial.taskName),
+  ]);
+  const groups = new Map<
+    string,
+    { grading: string; passes: number; recorded: number; intended: number }
+  >();
+  for (const task of tasks) {
+    const grading = gradings.get(task) ?? "unknown";
+    const row = groups.get(grading) ?? {
+      grading,
+      passes: 0,
+      recorded: 0,
+      intended: 0,
+    };
+    const recorded = trials.filter((trial) => trial.taskName === task);
+    row.passes += recorded.filter(passed).length;
+    row.recorded += recorded.length;
+    row.intended += expected.counts.get(task) ?? recorded.length;
+    groups.set(grading, row);
+  }
+  const missing =
+    (expected.total ?? 0) -
+    [...groups.values()].reduce((sum, group) => sum + group.intended, 0);
+  if (missing > 0) {
+    const unknown = groups.get("unknown") ?? {
+      grading: "unknown",
+      passes: 0,
+      recorded: 0,
+      intended: 0,
+    };
+    unknown.intended += missing;
+    groups.set("unknown", unknown);
+  }
+  return [...groups.values()]
+    .sort((a, b) => gradingRank(a.grading) - gradingRank(b.grading))
+    .map((group) => ({
+      ...group,
+      intended: expected.total === null || missing > 0 ? null : group.intended,
+    }));
 }
 
-function passRate(trials: BenchmarkTrial[]) {
-  const passes = trials.filter(passed).length;
+function passRate(groups: ReturnType<typeof passesByGrading>, known: boolean) {
+  const passes = groups.reduce((sum, group) => sum + group.passes, 0);
+  const intended = known
+    ? groups.reduce((sum, group) => sum + (group.intended ?? 0), 0)
+    : null;
   return {
     passes,
-    recorded: trials.length,
-    interval: wilson(passes, trials.length),
+    recorded: groups.reduce((sum, group) => sum + group.recorded, 0),
+    intended,
+    interval: intended === null ? undefined : wilson(passes, intended),
   };
 }
 
@@ -181,22 +214,37 @@ function toolUse(trials: BenchmarkTrial[], kind: "injected" | "native") {
 export function publicWebStats(
   trials: BenchmarkTrial[],
   gradings: Map<string, string> = taskGradings(trials),
+  expected: ExpectedTrials = { counts: new Map(), total: trials.length },
 ) {
   const costs = values(trials, (trial) => trial.metrics.costUsd);
-  const checked = (trial: BenchmarkTrial) =>
-    CHECKED.has(gradings.get(trial.taskName) ?? "");
+  const byGrading = passesByGrading(trials, gradings, expected);
+  const known =
+    expected.total !== null &&
+    !byGrading.some(
+      (group) => group.intended === null || !GRADINGS.includes(group.grading),
+    );
   const flagged = trials.flatMap((trial) => {
     const flags = reviewFlags(trial);
     return flags.length ? [{ trial: trial.trialName, flags }] : [];
   });
   return {
     recorded: trials.length,
+    intended: expected.total,
     passes: trials.filter(passed).length,
     // The headline: passes on tasks whose answer is checked against the page or a pinned value.
-    checked: passRate(trials.filter(checked)),
-    formatOnly: passRate(trials.filter((trial) => !checked(trial))),
-    interval: wilson(trials.filter(passed).length, trials.length),
-    passesByGrading: passesByGrading(trials, gradings),
+    checked: passRate(
+      byGrading.filter((group) => CHECKED.has(group.grading)),
+      known,
+    ),
+    formatOnly: passRate(
+      byGrading.filter((group) => group.grading === "shape/range rules"),
+      known,
+    ),
+    interval:
+      expected.total === null
+        ? undefined
+        : wilson(trials.filter(passed).length, expected.total),
+    passesByGrading: byGrading,
     pageVerified: trials.filter(
       (trial) => passed(trial) && trial.rewards.page_verified === 1,
     ).length,
@@ -237,25 +285,58 @@ export function publicWebStats(
   };
 }
 
+export function isPublicWeb(arms: BenchmarkArm[]): boolean {
+  return arms.some(
+    (arm) =>
+      arm.trials.some((trial) => trial.source === "public-web") ||
+      Object.values(arm.taskPlan).some((task) => task.source === "public-web"),
+  );
+}
+
 export function summarizePublicWeb(arms: BenchmarkArm[]) {
   const gradings = taskGradings(arms.flatMap((arm) => arm.trials));
-  return arms.map((arm) => ({
-    arm: arm.name,
-    configuration: summarizeArm(arm).configuration,
-    intended: arm.nTotalTrials,
-    ...publicWebStats(arm.trials, gradings),
-    tasks: [...new Set(arm.trials.map((trial) => trial.taskName))]
-      .sort()
-      .map((task) => {
+  for (const arm of arms) {
+    for (const [task, plan] of Object.entries(arm.taskPlan)) {
+      const grading = string(plan.metadata.grading);
+      if (grading) gradings.set(task, grading);
+    }
+  }
+  return arms.map((arm) => {
+    const counts = new Map(
+      Object.entries(arm.taskPlan).map(([task, plan]) => [task, plan.attempts]),
+    );
+    const tasks = [
+      ...new Set([
+        ...counts.keys(),
+        ...arm.trials.map((trial) => trial.taskName),
+      ]),
+    ].sort();
+    return {
+      arm: arm.name,
+      configuration: summarizeArm(arm).configuration,
+      ...publicWebStats(arm.trials, gradings, {
+        counts,
+        total: arm.nTotalTrials,
+      }),
+      tasks: tasks.map((task) => {
         const trials = arm.trials.filter((trial) => trial.taskName === task);
+        const total =
+          counts.get(task) ??
+          (arm.trials.length === arm.nTotalTrials ? trials.length : null);
         return {
           task,
           grading: gradings.has(task) ? [gradings.get(task) as string] : [],
-          placebo: trials.some(placebo),
-          ...publicWebStats(trials, gradings),
+          placebo:
+            arm.taskPlan[task]?.metadata.stage === "gap" ||
+            trials.some(placebo),
+          ...publicWebStats(trials, gradings, {
+            counts: new Map([[task, total ?? trials.length]]),
+            total,
+          }),
         };
       }),
-  }));
+    };
+  });
 }
 
 // Values at a path such as "games[].price"; "[]" steps into every array item.
@@ -433,11 +514,11 @@ const seconds = (value?: number) =>
 const percent = (value: number) => `${Math.round(value * 100)}`;
 const rate = (value: {
   passes: number;
-  recorded: number;
+  intended: number | null;
   interval?: [number, number];
 }) =>
   value.interval
-    ? `${value.passes}/${value.recorded} (${percent(value.interval[0])}–${percent(value.interval[1])}%)`
+    ? `${value.passes}/${value.intended} (${percent(value.interval[0])}–${percent(value.interval[1])}%)`
     : "—";
 const pValue = (value?: number) =>
   value === undefined
@@ -537,9 +618,11 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
         s.configuration ?? "unknown",
         `${s.recorded}/${s.intended}`,
         rate(s.checked),
-        `${s.formatOnly.passes}/${s.formatOnly.recorded}`,
+        s.formatOnly.intended === null
+          ? "—"
+          : `${s.formatOnly.passes}/${s.formatOnly.intended}`,
         s.passesByGrading
-          .map((g) => `${g.grading} ${g.passes}/${g.recorded}`)
+          .map((g) => `${g.grading} ${g.passes}/${g.intended ?? "?"}`)
           .join(" · ") || "—",
         stops(s.stops),
         s.flagged.length,
@@ -585,7 +668,7 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
         "Task",
         "Arm",
         "Grading",
-        "Pass / recorded (95% CI)",
+        "Pass / intended (95% CI)",
         "Stopped by",
         "Median agent time",
         "Median agent time (passes)",
@@ -600,7 +683,7 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
           t.grading.join(", ") || "unknown",
           rate({
             passes: t.passes,
-            recorded: t.recorded,
+            intended: t.intended,
             interval: t.interval,
           }),
           stops(t.stops),
@@ -610,15 +693,15 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
         ]),
     ),
     "",
-    "Checked pass counts only tasks whose answer is checked against the page's end state or a pinned value, with a 95% Wilson interval over recorded trials. A format-only pass, on a task with shape/range rules, shows a well-formed, in-range answer and nothing about whether it is true, and pinned-answer rules do not independently verify every returned fact. A pass also needs the agent to have used its assigned browser toolset and to have stayed within the task's spend limit. A rejected-call trial made a call its arm does not permit; the proxy blocked the call, which does not fail the trial.",
+    "Checked pass counts only tasks whose answer is checked against the page's end state or a pinned value, with a 95% Wilson interval over intended trials. Planned task gradings and attempt counts keep setup failures and missing trials in the denominator. Rates are unavailable when an older run lacks enough task-plan metadata to determine its denominators; unknown grading is never counted as format-only. A format-only pass, on a task with shape/range rules, shows a well-formed, in-range answer and nothing about whether it is true, and pinned-answer rules do not independently verify every returned fact. A pass also needs the agent to have used its assigned browser toolset and to have stayed within the task's spend limit. A rejected-call trial made a call its arm does not permit; the proxy blocked the call, which does not fail the trial.",
     "",
     "Stopped by counts trials that did not pass for a reason other than a wrong answer: blocked, site error and Kernel error are the agent's own report of what stopped it, page unreadable means the page could not be read for the end-state check, call cap means the task's browser-call limit ran out, over spend limit means the recorded model cost exceeded the task's limit, and errored trials never got a fair run, such as a failed setup or a model provider that rejected the agent's requests.",
     "",
     "An injected tool is one of the arm's xwebmcp tools and a native tool is the site's own; tried counts trials that invoked one through the webmcp tool, and completed those where an invocation succeeded. An invocation made from Playwright or REPL code names no tool the proxy can see, so those trials are counted apart. Flagged trials have a tool call in the agent's trajectory that reached the task's site, the Kernel API or the task's files outside the arm's browser tools; review them before publishing.",
     "",
     paired.length
-      ? "Agent time excludes browser/container setup and verification. The tables above are per arm and descriptive; only the matched-pairs table compares two arms, and an arm outside it ran independently in the same window. Pass rates count recorded trials, errored ones included; Recorded / intended shows how many of the intended trials ran. Cost covers only priced trials, not browser costs or unreported model charges."
-      : "Agent time excludes browser/container setup and verification. Arms run concurrently in the same window; repetitions are not matched pairs, so these tables make no paired speedup or significance claim. Pass rates count recorded trials, errored ones included; Recorded / intended shows how many of the intended trials ran. Cost covers only priced trials, not browser costs or unreported model charges.",
+      ? "Agent time excludes browser/container setup and verification. The tables above are per arm and descriptive; only the matched-pairs table compares two arms, and an arm outside it ran independently in the same window. Pass rates count intended trials, including errors and missing trials; Recorded / intended shows how many ran. Cost covers only priced trials, not browser costs or unreported model charges."
+      : "Agent time excludes browser/container setup and verification. Arms run concurrently in the same window; repetitions are not matched pairs, so these tables make no paired speedup or significance claim. Pass rates count intended trials, including errors and missing trials; Recorded / intended shows how many ran. Cost covers only priced trials, not browser costs or unreported model charges.",
   ];
   if (flagged.length)
     lines.push(
