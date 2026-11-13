@@ -114,6 +114,23 @@ export function renderMarkdown(
     );
   }
 
+  const failures = summaries.flatMap((summary) =>
+    summary.infraFailures.map(
+      (failure) =>
+        `| ${summary.arm} | ${failure.errorType} | ${failure.taskName} | ${failure.count} |`,
+    ),
+  );
+  if (failures.length > 0) {
+    lines.push(
+      "",
+      "### Infrastructure failures",
+      "",
+      "| Arm | Error | Task | Trials |",
+      "|---|---|---|---:|",
+      ...failures,
+    );
+  }
+
   if (typeof publication?.url === "string") {
     lines.push("", `[Open the Braintrust experiment](${publication.url})`);
   }

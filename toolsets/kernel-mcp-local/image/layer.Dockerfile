@@ -1,5 +1,6 @@
 # kernel-mcp-local toolset. Appended to the suite's Dockerfile, which must be
-# Debian-based with Node.js and Python 3.
+# Debian-based with Node.js and Python 3. The toolset appends the
+# KERNEL_MCP_ENABLED_TOOLSETS line for the arm.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends redis-server \
     && rm -rf /var/lib/apt/lists/* \
@@ -15,7 +16,6 @@ ENV CLERK_SECRET_KEY=sk_test_kernel_mcp_benchmark_local_only \
     KERNEL_CLI_PROD_CLIENT_ID=kernel-mcp-benchmark \
     KERNEL_CLI_STAGING_CLIENT_ID=kernel-mcp-benchmark \
     KERNEL_CLI_DEV_CLIENT_ID=kernel-mcp-benchmark \
-    KERNEL_MCP_ENABLED_TOOLSETS=playwright \
     REDIS_URL=redis://127.0.0.1:6379 \
     NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
