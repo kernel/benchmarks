@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Proxy a stdio MCP server, logging calls and optionally restricting its tools.
+
+With an allowlist, the server's own usage instructions are withheld too: they
+rank its tools and name ones the arm lacks, and the task instruction already
+says how to use the arm's tools. KERNEL_BENCH_MAX_BROWSER_CALLS caps the calls
+that reach the browser, whichever agent makes them.
+
+A WebMCP invocation names its tool by an opaque ref, so the proxy remembers what
+each list returned and logs which tool was invoked and how the invocation ended.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+# Any reference to the `webmcp` helper, however its methods are reached, or a call by method name.
+WEBMCP_IN_CODE = re.compile(r"\bwebmcp\b|\b(?:listTools|invokeTool)\s*\(")
+WEBMCP = re.compile(r"webmcp", re.IGNORECASE)
+# `webmcp` listed after the other names a description says are in scope.
+WEBMCP_IN_SCOPE = re.compile(r"(`),\s*(?:and\s+)?(?:browser-wide\s+)?`webmcp`(?:\s+helpers)?")
+
+
+def parse(line: bytes) -> dict[str, Any]:
+    try:
+        message = json.loads(line)
+    except ValueError:
+        return {}
+    return message if isinstance(message, dict) else {}
+
+
+def rejection(
+    name: Any, arguments: dict[str, Any], allowed: set[str], session: str | None
+) -> str | None:
+    """Why the arm does not permit this call, or None when it may reach the server."""
+    if name not in allowed:
+        return "This arm does not provide that tool. Use only the listed browser tools."
+    if not session or arguments.get("session_id") != session:
+        return "Pass the session ID in /run/kernel-mcp/session-id as session_id."
+    if name == "webmcp" and arguments.get("action") not in {"list", "invoke"}:
+        return "This arm permits only the list and invoke actions of webmcp."
+    if "webmcp" not in allowed and WEBMCP_IN_CODE.search(str(arguments.get("code") or "")):
+        return (
+            "This arm does not permit WebMCP, so code may not mention webmcp. "
+            "Use Playwright DOM/UI actions instead."
+        )
+    return None
+
+
+def result_json(message: dict[str, Any]) -> Any:
+    """The JSON a tool returned as text, or None."""
+    result = message.get("result")
+    content = result.get("content") if isinstance(result, dict) else None
+    for item in content if isinstance(content, list) else []:
+        if isinstance(item, dict) and item.get("type") == "text":
+            try:
+                return json.loads(item.get("text") or "")
+            except ValueError:
+                return None
+    return None
+
+
+def listed_tools(payload: Any) -> dict[str, dict[str, Any]]:
+    """Each tool_ref in a WebMCP list, with its tool's name and whether it was injected."""
+    tools = payload.get("tools") if isinstance(payload, dict) else None
+    refs = {}
+    for entry in tools if isinstance(tools, list) else []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("tool_ref"), str):
+            continue
+        tool, source = entry.get("tool"), entry.get("source")
+        refs[entry["tool_ref"]] = {
+            "tool": tool.get("name") if isinstance(tool, dict) else None,
+            "custom": isinstance(source, dict) and bool(source.get("custom")),
+        }
+    return refs
+
+
+def invocation(
+    arguments: dict[str, Any], payload: Any, refs: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Which tool an invocation named and whether it succeeded.
+
+    A form tool that fills a form without submitting it ends awaiting_submission.
+    A tool can also complete and report its own error status in its output.
+    """
+    tool_ref = arguments.get("tool_ref")
+    known = refs.get(tool_ref) if isinstance(tool_ref, str) else None
+    status = payload.get("status") if isinstance(payload, dict) else None
+    output = payload.get("output") if isinstance(payload, dict) else None
+    tool_status = output.get("status") if isinstance(output, dict) else None
+    return {
+        **(known or {"tool": None, "custom": None}),
+        "status": status if isinstance(status, str) else None,
+        "ok": status in {"completed", "awaiting_submission"} and tool_status != "error",
+    }
+
+
+def without_webmcp(text: str) -> str:
+    """Cut each paragraph of a description at its first sentence that mentions WebMCP.
+
+    The server follows a tool's own description with guidance to prefer WebMCP,
+    and the sentences after it continue that guidance.
+    """
+    paragraphs = []
+    for paragraph in WEBMCP_IN_SCOPE.sub(r"\1", text).split("\n\n"):
+        kept = []
+        for sentence in re.split(r"(?<=\.)\s+", paragraph):
+            if WEBMCP.search(sentence):
+                break
+            kept.append(sentence)
+        if kept:
+            paragraphs.append(" ".join(kept))
+    return "\n\n".join(paragraphs)
+
+
+def describe_without_webmcp(tool: dict[str, Any]) -> None:
+    properties = (tool.get("inputSchema") or {}).get("properties") or {}
+    for described in (tool, *properties.values()):
+        if isinstance(described, dict) and isinstance(described.get("description"), str):
+            described["description"] = without_webmcp(described["description"])
+
+
+def main() -> int:
+    log_path, command = sys.argv[1], sys.argv[2:]
+    allowed = set(filter(None, os.environ.get("KERNEL_BENCH_ALLOWED_TOOLS", "").split(",")))
+    cap = int(os.environ.get("KERNEL_BENCH_MAX_BROWSER_CALLS") or 0)
+    # An agent that restarts its MCP server starts a new proxy, so the count comes from the log.
+    forwarded = (
+        sum(
+            parse(line).get("rejected") is False
+            for line in Path(log_path).read_bytes().splitlines()
+        )
+        if Path(log_path).exists()
+        else 0
+    )
+    refs: dict[str, dict[str, Any]] = {}
+    session_file = Path("/run/kernel-mcp/session-id")
+    session = os.environ.get("KERNEL_SESSION_ID") or (
+        session_file.read_text().strip() if session_file.exists() else None
+    )
+    lock = threading.Lock()
+    output_lock = threading.Lock()
+    pending: dict[Any, tuple[str, dict[str, Any], float, str]] = {}
+    child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    assert child.stdin is not None and child.stdout is not None
+
+    with open(log_path, "a") as log:
+
+        def record(
+            params: dict[str, Any],
+            started: float,
+            started_at: str,
+            result: dict[str, Any],
+            rejected: bool = False,
+            **extra: Any,
+        ) -> None:
+            entry = {
+                "tool": params.get("name"),
+                "arguments": params.get("arguments"),
+                "started_at": started_at,
+                "duration_ms": round((time.monotonic() - started) * 1000),
+                "is_error": "error" in result
+                or (result.get("result") or {}).get("isError") is True,
+                "rejected": rejected,
+                **extra,
+            }
+            with lock:
+                log.write(json.dumps(entry) + "\n")
+                log.flush()
+
+        def emit(line: bytes) -> None:
+            with output_lock:
+                sys.stdout.buffer.write(line)
+                sys.stdout.buffer.flush()
+
+        def to_server() -> None:
+            nonlocal forwarded
+            for line in sys.stdin.buffer:
+                message = parse(line)
+                if allowed and not message and line.strip():
+                    # Anything else, such as a batch, would carry calls past the checks below.
+                    refusal = {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32600, "message": "Send one JSON-RPC message per line."},
+                    }
+                    emit((json.dumps(refusal) + "\n").encode())
+                    continue
+                method = message.get("method")
+                params = message.get("params") or {}
+                started, started_at = time.monotonic(), datetime.now(UTC).isoformat()
+                if method == "tools/call" and allowed:
+                    arguments = params.get("arguments")
+                    reason = rejection(
+                        params.get("name"),
+                        arguments if isinstance(arguments, dict) else {},
+                        allowed,
+                        session,
+                    )
+                    capped = not reason and cap > 0 and forwarded >= cap
+                    if capped:
+                        reason = (
+                            f"This task allows {cap} browser calls and they are used up. "
+                            "Call finalize now with what you have found."
+                        )
+                    if reason:
+                        response = {
+                            "jsonrpc": "2.0",
+                            "id": message.get("id"),
+                            "result": {
+                                "isError": True,
+                                "content": [{"type": "text", "text": reason}],
+                            },
+                        }
+                        record(
+                            params,
+                            started,
+                            started_at,
+                            response,
+                            rejected=True,
+                            **({"capped": True} if capped else {}),
+                        )
+                        emit((json.dumps(response) + "\n").encode())
+                        continue
+                    forwarded += 1
+                if "id" in message and method in {"tools/call", "tools/list", "initialize"}:
+                    with lock:
+                        pending[message["id"]] = (method, params, started, started_at)
+                child.stdin.write(line)
+                child.stdin.flush()
+            child.stdin.close()
+
+        threading.Thread(target=to_server, daemon=True).start()
+        for line in child.stdout:
+            message = parse(line)
+            # A message with a method is the server's own request, whose ID may match a pending call.
+            with lock:
+                request = None if "method" in message else pending.pop(message.get("id"), None)
+            if request:
+                method, params, started, started_at = request
+                if method == "tools/call":
+                    arguments = params.get("arguments")
+                    arguments = arguments if isinstance(arguments, dict) else {}
+                    extra = {}
+                    if params.get("name") == "webmcp" and arguments.get("action") == "list":
+                        refs.update(listed_tools(result_json(message)))
+                    elif params.get("name") == "webmcp" and arguments.get("action") == "invoke":
+                        extra["webmcp"] = invocation(arguments, result_json(message), refs)
+                    record(params, started, started_at, message, **extra)
+                elif allowed and "result" in message:
+                    if method == "initialize":
+                        message["result"].pop("instructions", None)
+                    else:
+                        tools = [
+                            tool
+                            for tool in message["result"].get("tools", [])
+                            if tool.get("name") in allowed
+                        ]
+                        if "webmcp" not in allowed:
+                            for tool in tools:
+                                describe_without_webmcp(tool)
+                        message["result"]["tools"] = tools
+                    line = (json.dumps(message) + "\n").encode()
+            emit(line)
+    return child.wait()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

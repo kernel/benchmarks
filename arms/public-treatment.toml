@@ -1,0 +1,11 @@
+# Same as public-control, with the site's xwebmcp tools registered in the browser before the
+# agent starts.
+runner = "codex"
+toolset = "browser-approach"
+toolset_ref = "df5a5e2f9d701aba1d7b6cc115f939448e840b48"
+
+[toolset_args]
+approach = "treatment"
+
+[browser]
+config = { stealth = true }

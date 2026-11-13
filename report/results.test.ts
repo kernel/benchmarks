@@ -220,6 +220,48 @@ describe("Harbor result ingestion", () => {
     expect(arm.trials[1].error).toContain("Step setup exited with code 1");
   });
 
+  test("separates a failed agent run from the agent's own outcome", () => {
+    const classify = (
+      exception_type: string,
+      rewards: Record<string, number>,
+    ) => {
+      const root = fixture();
+      const path = join(root, "task-two__def", "result.json");
+      const failed = JSON.parse(readFileSync(path, "utf8")) as Record<
+        string,
+        unknown
+      >;
+      delete failed.exception_info;
+      failed.verifier_result = { rewards };
+      failed.step_results = [
+        { exception_info: { exception_type, exception_message: "401" } },
+      ];
+      writeJson(path, failed);
+      const trial = readBenchmarkArm({ name: "candidate", path: root })
+        .trials[1];
+      return [trial.errorClass, trial.errorType];
+    };
+    const failedTask = { reward: 0, reward_lenient: 0 };
+    // The verifier still ran, so only the step records that the provider refused the agent.
+    expect(classify("AgentAuthenticationError", failedTask)).toEqual([
+      "infra",
+      "AgentAuthenticationError",
+    ]);
+    expect(classify("ApiRateLimitError", failedTask)[0]).toBe("infra");
+    // Running out of time or context is how the agent did on the task.
+    expect(classify("AgentTimeoutError", failedTask)[0]).toBeUndefined();
+    expect(
+      classify("ContextWindowExceededError", failedTask)[0],
+    ).toBeUndefined();
+    // Work the agent finished before the failure keeps its grade.
+    expect(
+      classify("ApiRateLimitError", { reward_lenient: 1 })[0],
+    ).toBeUndefined();
+    expect(
+      classify("ApiRateLimitError", { reward: 0, finalized: 1 })[0],
+    ).toBeUndefined();
+  });
+
   test("summarizes against the intended task denominator", () => {
     const summary = summarizeArm(
       readBenchmarkArm({ name: "candidate", path: fixture() }),
