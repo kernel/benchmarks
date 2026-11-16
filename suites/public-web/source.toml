@@ -1,0 +1,19 @@
+repository = "https://github.com/kernel/xwebmcp"
+revision = "e4e30fc86d44790bd4df441ef6b205155836b5c1"
+
+tasks = [
+  "github-repo-details",
+  "github-merged-pr",
+  "github-top-repos-for-topic",
+  "booking-house-rules",
+  "google-flights-cheapest-fare",
+  "delta-cart-main-classic",
+  "target-search-first-result",
+  "steam-compare-series",
+  # No tool at this revision reads a release, so treatment should gain nothing here.
+  "github-latest-release",
+]
+
+# A trial whose recorded model cost exceeds this is not counted as a pass. It matches the
+# default per-trial spend cap of xwebmcp's own runner.
+max_cost_usd = 2.0

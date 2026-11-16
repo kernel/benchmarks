@@ -1,0 +1,6 @@
+agent = "claude-code"
+model = "claude-sonnet-5"
+agent_version = "2.1.301"
+
+[agent_kwargs]
+disable_web_search = true

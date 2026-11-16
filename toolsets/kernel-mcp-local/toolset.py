@@ -1,19 +1,20 @@
 """Kernel MCP server, built from source and run inside the task container.
 
-The agent connects over stdio and drives the trial's browser with
-`execute_playwright_code`. Browser lifecycle tools are disabled, so the agent
-can only use the browser Harbor created for the trial.
+The agent connects over stdio with the selected browser toolsets (Playwright
+by default). Browser lifecycle toolsets are disabled; the instruction requires
+the browser Harbor assigned to the trial.
 """
 
 from __future__ import annotations
 
 import shutil
-import subprocess
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 
 import tomlkit
 
+from harness.sources import fetch_source
 from harness.tasks import append_instruction, append_test_command, read_config, write_config
 
 REPOSITORY = "https://github.com/kernel/kernel-mcp-server"
@@ -29,38 +30,45 @@ INSTRUCTION = """
 """
 
 
-def apply(task_dirs: list[Path], ref: str | None = None) -> None:
+TOOLS = {
+    "playwright": "execute_playwright_code",
+    "repl": "browser_repl",
+    "computer": "computer_action",
+    "webmcp": "webmcp",
+}
+
+
+def apply(
+    task_dirs: list[Path],
+    ref: str | None = None,
+    toolsets: Sequence[str] = ("playwright",),
+    instruction: str = INSTRUCTION,
+) -> None:
+    if not toolsets or set(toolsets) - TOOLS.keys():
+        raise SystemExit(f"Unsupported browser toolsets: {toolsets}")
     with tempfile.TemporaryDirectory() as tmp:
         source = Path(tmp) / "source"
         sha = _fetch_source(ref or "main", source)
         for task_dir in task_dirs:
-            _apply(task_dir, source, sha)
+            _apply(task_dir, source, sha, toolsets, instruction)
 
 
 def _fetch_source(ref: str, dest: Path) -> str:
-    dest.mkdir()
-
-    def git(*args: str) -> str:
-        return subprocess.run(
-            ["git", "-C", str(dest), *args], check=True, capture_output=True, text=True
-        ).stdout.strip()
-
-    git("init", "-q")
-    git("fetch", "-q", "--depth", "1", REPOSITORY, ref)
-    git("checkout", "-q", "FETCH_HEAD")
-    sha = git("rev-parse", "HEAD")
-    shutil.rmtree(dest / ".git")
-    (dest / "SOURCE_SHA").write_text(sha + "\n")
-    return sha
+    return fetch_source(REPOSITORY, ref, dest)
 
 
-def _apply(task_dir: Path, source: Path, sha: str) -> None:
+def _apply(
+    task_dir: Path, source: Path, sha: str, toolsets: Sequence[str], instruction: str
+) -> None:
     context = task_dir / "environment" / "kernel-mcp-local"
     shutil.copytree(IMAGE / "bin", context / "bin")
     shutil.copytree(source, context / "source")
     dockerfile = task_dir / "environment" / "Dockerfile"
     dockerfile.write_text(
-        dockerfile.read_text().rstrip() + "\n\n" + (IMAGE / "layer.Dockerfile").read_text()
+        dockerfile.read_text().rstrip()
+        + "\n\n"
+        + (IMAGE / "layer.Dockerfile").read_text()
+        + f"\nENV KERNEL_MCP_ENABLED_TOOLSETS={','.join(toolsets)}\n"
     )
 
     config = read_config(task_dir)
@@ -68,11 +76,10 @@ def _apply(task_dir: Path, source: Path, sha: str) -> None:
     server.update(
         {"name": "kernel", "transport": "stdio", "command": "/usr/local/bin/kernel-mcp", "args": []}
     )
-    servers = tomlkit.aot()
+    servers = config["environment"].setdefault("mcp_servers", tomlkit.aot())
     servers.append(server)
-    config["environment"]["mcp_servers"] = servers
     config.setdefault("metadata", tomlkit.table())["kernel_mcp_server_sha"] = sha
     write_config(task_dir, config)
 
-    append_instruction(task_dir, INSTRUCTION)
+    append_instruction(task_dir, instruction)
     append_test_command(task_dir, "kernel-mcp-verify")

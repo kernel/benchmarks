@@ -3,10 +3,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   type ArmSummary,
+  type BenchmarkArm,
   parseArmSpec,
   readBenchmarkArm,
   summarizeArm,
 } from "./results";
+import { isPublicWeb, renderPublicWeb, summarizePublicWeb } from "./public-web";
 
 interface Options {
   arms: string[];
@@ -86,6 +88,7 @@ export function renderMarkdown(
   summaries: ArmSummary[],
   publication?: Record<string, unknown>,
   statuses: Record<string, number> = {},
+  arms?: BenchmarkArm[],
 ): string {
   const lines = [`## ${title}`];
   const failed = Object.entries(statuses).filter(([, status]) => status !== 0);
@@ -100,18 +103,23 @@ export function renderMarkdown(
     ];
     lines.push(
       "",
-      `> [!WARNING]\n> Incomplete benchmark: ${reasons.join(", ")}. Scores below include only completed Harbor results.`,
+      `> [!WARNING]\n> Incomplete benchmark: ${reasons.join(", ")}. Only recorded trials can contribute passes.`,
     );
   }
-  lines.push(
-    "",
-    "| Arm | Configuration | Lenient | Strict | Intercepted | Infra | Retries | Ungraded | Kernel MCP valid | Median calls | Median duration | Cost |",
-    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
-  );
-  for (const summary of summaries) {
+  const publicWeb = arms && (title === "public-web" || isPublicWeb(arms));
+  if (publicWeb) {
+    lines.push("", renderPublicWeb(arms));
+  } else {
     lines.push(
-      `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${ratio(summary.strict, summary.trials)} | ${ratio(summary.intercepted, summary.trials)} | ${summary.infraErrors} | ${summary.retries} | ${summary.ungraded} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${summary.medianCalls ?? "—"} | ${duration(summary.medianDurationMs)} | ${cost(summary.totalCostUsd)} |`,
+      "",
+      "| Arm | Configuration | Lenient | Strict | Intercepted | Infra | Retries | Ungraded | Kernel MCP valid | Median calls | Median duration | Cost |",
+      "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     );
+    for (const summary of summaries) {
+      lines.push(
+        `| ${summary.arm} | ${summary.configuration ?? "—"} | ${ratio(summary.lenient, summary.trials)} | ${ratio(summary.strict, summary.trials)} | ${ratio(summary.intercepted, summary.trials)} | ${summary.infraErrors} | ${summary.retries} | ${summary.ungraded} | ${ratio(summary.kernelMcpValid, summary.kernelMcpChecked)} | ${summary.medianCalls ?? "—"} | ${duration(summary.medianDurationMs)} | ${cost(summary.totalCostUsd)} |`,
+      );
+    }
   }
 
   if (typeof publication?.url === "string") {
@@ -129,7 +137,9 @@ export function renderMarkdown(
   }
   lines.push(
     "",
-    "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator.",
+    publicWeb
+      ? "Errored trials remain in every denominator."
+      : "Lenient reward is the primary ClawBench score. Infrastructure failures remain in the intended-task denominator.",
     "",
   );
   return lines.join("\n");
@@ -157,12 +167,16 @@ function main(): void {
     arms: summaries,
     statuses: options.statuses,
     publication,
+    ...(options.title === "public-web" || isPublicWeb(arms)
+      ? { publicWeb: summarizePublicWeb(arms) }
+      : {}),
   };
   const rendered = renderMarkdown(
     options.title,
     summaries,
     publication,
     options.statuses,
+    arms,
   );
   write(options.json, `${JSON.stringify(result, undefined, 2)}\n`);
   write(options.markdown, rendered);

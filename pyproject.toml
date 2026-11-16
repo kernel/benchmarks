@@ -33,7 +33,7 @@ allow-direct-references = true
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-extend-include = ["configurators/*/configure", "toolsets/*/image/bin/kernel-mcp-verify"]
+extend-include = ["configurators/*/configure", "toolsets/*/image/bin/kernel-mcp-verify", "toolsets/*/image/bin/mcp-call-log", "suites/*/image/bench/finalize-mcp"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

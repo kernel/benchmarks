@@ -8,9 +8,13 @@ set -eu
 state=/run/kernel-mcp
 logs=/var/log/kernel-mcp
 mkdir -p "$state" "$logs"
+touch "$logs/calls.jsonl"
+chmod 0666 "$logs/calls.jsonl"
 printf '%s' "${KERNEL_API_KEY:-}" >"$state/api-key"
 chmod 0600 "$state/api-key"
 printf '%s\n' "${KERNEL_SESSION_ID:-}" >"$state/session-id"
+printf '%s\n' "${KERNEL_BENCH_ALLOWED_TOOLS:-}" >"$state/allowed-tools"
+printf '%s\n' "${KERNEL_BENCH_MAX_BROWSER_CALLS:-}" >"$state/max-browser-calls"
 
 redis-server --daemonize yes --bind 127.0.0.1 --port 6379 --dir /tmp \
   --logfile "$logs/redis.log"

@@ -1,0 +1,6 @@
+agent = "pi"
+model = "anthropic/claude-sonnet-5"
+agent_version = "0.85.1"
+
+[agent_kwargs]
+thinking = "medium"

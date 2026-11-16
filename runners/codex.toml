@@ -1,0 +1,6 @@
+agent = "codex"
+model = "gpt-6-luna"
+agent_version = "0.163.0"
+
+[agent_kwargs]
+disable_web_search = true
