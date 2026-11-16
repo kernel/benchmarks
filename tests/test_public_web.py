@@ -4,6 +4,7 @@ import runpy
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 from pathlib import Path
 
@@ -14,6 +15,10 @@ from harness.run import PreparedArm, harbor_command, prepare, run
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "toolsets/kernel-mcp-local/image/bin"
+
+
+def logged_calls(path):
+    return runpy.run_path(str(BIN / "kernel-mcp-verify"))["read_calls"](path)
 
 
 def test_public_arms_change_only_the_approach():
@@ -358,7 +363,7 @@ for line in sys.stdin:
     assert "list and invoke" in responses[5]["content"][0]["text"]
     # WebMCP from code is forwarded here because this arm has the webmcp tool.
     assert responses[7]["content"][0]["text"] == "forwarded"
-    calls = list(map(json.loads, log.read_text().splitlines()))
+    calls = logged_calls(log)
     assert len(calls) == 6
     assert sum(call["rejected"] for call in calls) == 3
 
@@ -406,8 +411,19 @@ for line in sys.stdin:
         for index, arguments in enumerate(calls)
     ]
     log = tmp_path / "calls.jsonl"
-    # A call an earlier proxy forwarded counts toward the cap of four.
-    log.write_text(json.dumps({"tool": "webmcp", "rejected": False}) + "\n")
+    # Both legacy calls and started/completed pairs count once after a restart.
+    previous = {"tool": "webmcp", "rejected": False, "call_id": "previous"}
+    log.write_text(
+        "\n".join(
+            json.dumps(call)
+            for call in [
+                {"tool": "webmcp", "rejected": False},
+                {**previous, "event": "started"},
+                {**previous, "event": "completed"},
+            ]
+        )
+        + "\n"
+    )
     result = subprocess.run(
         [sys.executable, str(BIN / "mcp-call-log"), str(log), sys.executable, str(server)],
         input="\n".join(json.dumps(request) for request in requests) + "\n",
@@ -417,15 +433,12 @@ for line in sys.stdin:
         env={
             **os.environ,
             "KERNEL_BENCH_ALLOWED_TOOLS": "webmcp",
-            "KERNEL_BENCH_MAX_BROWSER_CALLS": "4",
+            "KERNEL_BENCH_MAX_BROWSER_CALLS": "5",
             "KERNEL_SESSION_ID": "s",
         },
     )
     assert result.returncode == 0, result.stderr
-    # Rejections are logged as they happen, ahead of slower forwarded calls.
-    logged = sorted(
-        map(json.loads, log.read_text().splitlines()[1:]), key=lambda entry: entry["started_at"]
-    )
+    logged = sorted(logged_calls(log)[2:], key=lambda entry: entry["started_at"])
     assert [entry.get("webmcp") for entry in logged] == [
         None,
         {"tool": "search", "custom": True, "status": "completed", "ok": False},
@@ -442,6 +455,109 @@ for line in sys.stdin:
     assert summary["valid"] and summary["call_cap_hit"] and summary["browser_calls"] == 3
     assert summary["injected_tool_invoked"] and not summary["injected_tool_completed"]
     assert summary["native_tool_completed"]
+    assert summary["webmcp_tools"]["search"]["invocations"] == 1
+
+
+@pytest.mark.parametrize("failure", ["server", "proxy"])
+def test_call_cap_survives_a_restart_before_the_response(tmp_path, failure):
+    received = tmp_path / "received.jsonl"
+    server = tmp_path / "server.py"
+    server.write_text(f"""import json, sys
+for line in sys.stdin:
+    request = json.loads(line)
+    with open({str(received)!r}, "a") as received:
+        received.write(line)
+    if sys.argv[1] == "server":
+        sys.exit(1)
+    if sys.argv[1] == "proxy":
+        continue
+    print(json.dumps({{"jsonrpc": "2.0", "id": request["id"], "result": {{"content": []}}}}), flush=True)
+""")
+    log = tmp_path / "calls.jsonl"
+    log.write_text('{"call_id":')
+    command = [sys.executable, str(BIN / "mcp-call-log"), str(log), sys.executable, str(server)]
+    env = {
+        **os.environ,
+        "KERNEL_BENCH_ALLOWED_TOOLS": "execute_playwright_code",
+        "KERNEL_BENCH_MAX_BROWSER_CALLS": "1",
+        "KERNEL_SESSION_ID": "s",
+    }
+    request = (
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "execute_playwright_code",
+                    "arguments": {"session_id": "s", "code": "return 1"},
+                },
+            }
+        )
+        + "\n"
+    )
+    first = subprocess.Popen(
+        [*command, failure],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    try:
+        first.stdin.write(request)
+        first.stdin.flush()
+        deadline = time.monotonic() + 5
+        while not received.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert received.exists(), "the server did not receive the first call"
+        if failure == "proxy":
+            first.kill()
+        first.communicate(timeout=5)
+    finally:
+        if first.poll() is None:
+            first.kill()
+            first.communicate(timeout=5)
+    second = subprocess.run(
+        [*command, "respond"],
+        input=request,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=env,
+    )
+    assert second.returncode == 0, second.stderr
+    response = json.loads(second.stdout)["result"]
+    assert response["isError"] and "finalize" in response["content"][0]["text"]
+    assert len(received.read_text().splitlines()) == 1
+    verifier = runpy.run_path(str(BIN / "kernel-mcp-verify"))
+    calls = verifier["read_calls"](log)
+    summary = verifier["check_calls"](calls, ["playwright"], "s", "playwright")
+    assert summary["browser_calls"] == 1 and summary["rejected_calls"] == 1
+    assert summary["call_cap_hit"] and summary["valid"]
+
+
+def test_call_log_counts_a_completed_dispatch_once_and_keeps_unfinished_calls(tmp_path):
+    legacy = {
+        "tool": "execute_playwright_code",
+        "arguments": {"session_id": "s"},
+        "duration_ms": 5,
+        "rejected": False,
+    }
+    started = {**legacy, "call_id": "a", "event": "started", "duration_ms": None}
+    completed = {**started, "event": "completed", "duration_ms": 10, "is_error": True}
+    unfinished = {**started, "call_id": "b"}
+    rejected = {**legacy, "rejected": True}
+    log = tmp_path / "calls.jsonl"
+    log.write_text(
+        "\n".join(json.dumps(call) for call in [legacy, started, unfinished, completed, rejected])
+    )
+    verifier = runpy.run_path(str(BIN / "kernel-mcp-verify"))
+    calls = verifier["read_calls"](log)
+    assert len(calls) == 4
+    summary = verifier["check_calls"](calls, ["playwright"], "s", "playwright")
+    assert summary["browser_calls"] == 3 and summary["rejected_calls"] == 1
+    assert summary["browser_call_ms"] == 15 and summary["browser_call_errors"] == 1
 
 
 def test_call_proxy_blocks_webmcp_from_code_in_the_playwright_arm(tmp_path):
@@ -490,7 +606,7 @@ for line in sys.stdin:
     for index in range(3):
         assert responses[index]["isError"] and "WebMCP" in responses[index]["content"][0]["text"]
     assert responses[3]["content"][0]["text"] == "forwarded"
-    calls = list(map(json.loads, log.read_text().splitlines()))
+    calls = logged_calls(log)
     assert [call["rejected"] for call in calls] == [True, True, True, False]
     check = runpy.run_path(str(BIN / "kernel-mcp-verify"))["check_calls"]
     assert check(calls, ["playwright"], "s", "playwright")["valid"]
@@ -531,7 +647,7 @@ for line in sys.stdin:
     refusal, ping, response = map(json.loads, result.stdout.splitlines())
     assert refusal["id"] is None and refusal["error"]["code"] == -32600
     assert ping["method"] == "ping" and response["result"]["isError"]
-    (logged,) = map(json.loads, log.read_text().splitlines())
+    (logged,) = logged_calls(log)
     assert logged["tool"] == "execute_playwright_code" and logged["is_error"]
 
 

@@ -30,13 +30,21 @@ def read_calls(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     calls = []
+    by_id = {}
     for line in path.read_text().splitlines():
         try:
             call = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(call, dict):
+        if not isinstance(call, dict):
+            continue
+        call_id = call.get("call_id")
+        if isinstance(call_id, str) and call_id in by_id:
+            by_id[call_id].update(call)
+        else:
             calls.append(call)
+            if isinstance(call_id, str):
+                by_id[call_id] = call
     return calls
 
 

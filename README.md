@@ -205,8 +205,9 @@ different run dates.
 
 Two limits come from xwebmcp's own runner. Its turn cap becomes a cap on browser calls, which
 the call proxy enforces for every agent: once a trial has made that many, further calls are
-refused and the agent is told to finalize. Its per-trial spend cap, `max_cost_usd` in
-[suites/public-web/source.toml](suites/public-web/source.toml), is applied by the report,
+refused and the agent is told to finalize. Dispatches are logged before forwarding, so a
+call still counts if its response is lost or the MCP process restarts. Its per-trial spend cap,
+`max_cost_usd` in [suites/public-web/source.toml](suites/public-web/source.toml), is applied by the report,
 because Harbor's agents cannot all stop on spend: a trial that cost more is not a pass. It
 only applies to trials whose model cost Harbor could price. The shared result reader applies
 it to Markdown, JSON summaries and Braintrust scores; original grader rewards remain in the
@@ -215,8 +216,10 @@ the run manifest.
 
 The agent calls `finalize` with its JSON answer. The verifier applies the pinned answer
 schema/rules and, for the cart task, reads the final page independently and compares it to
-the answer. That page check covers the route, cabin, passenger count and amount due, not the
-flight numbers or whether the fare is the cheapest. The rules and the grader are uploaded only
+the answer. That page check covers the route, displayed departure date, cabin, passenger count
+and amount due, not the flight numbers or whether the fare is the cheapest. The verifier adds
+the departure-date check to the pinned grader and reads it from the cart's itinerary fields;
+a missing or mismatched date cannot pass. The rules and the grader are uploaded only
 for verification, so the agent's container never holds them. A success claim alone is
 insufficient, and a trial with no permitted browser call gets zero reward. The report's
 headline is the checked pass rate: passes on the tasks graded by page end state or pinned
