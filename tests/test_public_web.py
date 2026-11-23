@@ -31,7 +31,7 @@ def test_public_arms_change_only_the_approach():
     assert all(len(arm.toolset_ref) == 40 for arm in arms)
     source = tomllib.loads((ROOT / "suites/public-web/source.toml").read_text())
     assert len(source["revision"]) == 40
-    assert len(source["tasks"]) == 9
+    assert len(source["tasks"]) == 21
     assert source["max_cost_usd"] > 0
 
 
@@ -82,6 +82,7 @@ def test_suite_writes_harbor_task_and_keeps_injection_outside_image(tmp_path):
             "trial_timeout_sec": 600,
             "max_turns": 40,
             "rules": [{"path": "answer", "equals": "pinned-answer"}],
+            "agreement": {"path": "answer", "same": True},
         },
         "prompt": "Return JSON.",
         "grading": "pinned rules",
@@ -95,6 +96,7 @@ def test_suite_writes_harbor_task_and_keeps_injection_outside_image(tmp_path):
     assert config["source"] == "public-web"
     assert config["metadata"]["limits"] == {"browser_calls": 40, "cost_usd": 2.0}
     assert config["metadata"]["xwebmcp_sha"] == "a" * 40
+    assert config["metadata"]["agreement"] == {"path": "answer", "same": True}
     assert config["environment"]["mcp_servers"][0]["name"] == "bench"
     assert (task_dir / "xwebmcp-tools.js").exists()
     assert not (task_dir / "environment/bench/tools.js").exists()

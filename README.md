@@ -122,9 +122,10 @@ ClawBench's primary score is the lenient reward. `kernel_mcp_valid` records whet
 
 ### `public-web`
 
-Compare three browser approaches on nine signed-out tasks across six sites. The tasks cover
-repository facts and search, hotel rules, flight search and cart preparation, retail search,
-and comparing game prices. No logins, payment details or purchases. One task,
+Compare three browser approaches on 21 signed-out tasks across 17 sites. The tasks cover
+repository facts and search, hotel rules and room rates, flight search on Google Flights and
+three airlines, cart preparation, setting a delivery address, retail and ticket search,
+restaurant availability, and comparing prices. No logins, payment details or purchases. One task,
 `github-latest-release`, is a placebo: the treatment arm gets GitHub's tools, but none of them
 reads a release, so a difference between control and treatment there is noise.
 
@@ -194,7 +195,7 @@ model access is implied by selecting a preset, and live model availability still
 provider account. Add another MCP-capable Harbor agent by adding a file under `runners/`, rather
 than duplicating the three browser arms. Credentials stay in environment variables, not presets.
 
-The full workflow defaults to 135 trials (9 tasks × 3 arms × 5 attempts), each with a fresh
+The full workflow defaults to 315 trials (21 tasks × 3 arms × 5 attempts), each with a fresh
 browser. Control and treatment differ only in the injected tools, so `benchmarks/public-web.toml`
 pairs them: for every task and attempt, one control and one treatment trial run back to back,
 in an order that is random but balanced within each task and recorded in the run manifest.
@@ -215,8 +216,10 @@ local artifacts and Braintrust's `rawRewards` metadata. Each task's timeout and 
 the run manifest.
 
 The agent calls `finalize` with its JSON answer. The verifier applies the pinned answer
-schema/rules and, for the cart task, reads the final page independently and compares it to
-the answer. That page check covers the route, displayed departure date, cabin, passenger count
+schema/rules and, for the two tasks that leave the site in a state, reads the final page
+independently: the DoorDash task must leave the requested delivery address set, and the cart
+task's page is compared to the answer. The cart check covers the route, displayed departure
+date, cabin, passenger count
 and amount due, not the flight numbers or whether the fare is the cheapest. The verifier adds
 the departure-date check to the pinned grader and reads it from the cart's itinerary fields;
 a missing or mismatched date cannot pass. The rules and the grader are uploaded only
@@ -227,6 +230,16 @@ rules, with a 95% interval. Passes on shape/range tasks are reported apart as fo
 because they show a well-formed, in-range answer and nothing about whether it is true. Even
 pinned rules do not verify every returned fact. Audit examples before publishing correctness
 claims; this catalog is a screening set, not a held-out validation set.
+
+For twelve tasks the best answer changes too often to pin, such as a cheapest fare or
+tonight's open tables, and the verifier cannot tell whether a well-formed answer is the best
+one. The report compares their passing trials with each other across every arm in it: a
+trial matched the run's best answer when it gave the lowest price any passing trial gave for
+that task, within the task's tolerance, or, where a task has one right answer, the answer
+most passing trials gave. This catches an arm that reports a well-formed fare that is not the
+cheapest. It compares trials with each other and not with the site, so one wrong outlier can
+set the bar, answers can move while a run is in progress, and the rate depends on which arms
+ran.
 
 Reports show per-arm and per-task results, agent-only time (excluding setup and grading),
 input/cached/output tokens, browser call counts, toolset validity, rejected calls and recorded

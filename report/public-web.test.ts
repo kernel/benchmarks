@@ -157,13 +157,13 @@ test("public-web reports agent time, tokens, graded outcomes and pricing coverag
   );
   // This legacy job has no task plan to classify its missing trial.
   expect(report).toContain(
-    "| 3/4 | — | — | end state 1/? · unknown 0/? | blocked 1 · errored (SetupError) 1 | 0 |",
+    "| 3/4 | — | — | — | end state 1/? · unknown 0/? | blocked 1 · errored (SetupError) 1 | 0 |",
   );
   expect(report).toContain(
     "| control | 3 | 2/3 | 1 | 0 / 0 | 0 / 0 | 0 | 30s |",
   );
   expect(report).toContain(
-    "| end state | — | blocked 1 · errored (SetupError) 1 | 30s |",
+    "| end state | — | — | blocked 1 · errored (SetupError) 1 | 30s |",
   );
   expect(report).toContain("30s | 20s");
   expect(report).toContain("1000 / 200 / 100");
@@ -777,6 +777,90 @@ test("matched pairs compare speed over both-pass pairs and passes over discordan
     }),
   ]);
   expect(compared.tasks[0].agreement).toEqual({ checked: 2, differed: 1 });
+});
+
+test("answers that cannot be pinned are compared with the run's best across arms", () => {
+  const price = {
+    grading: "shape/range rules",
+    agreement: { path: "price", better: "lower", tolerance: 1 },
+  };
+  const times = {
+    grading: "shape/range rules",
+    agreement: { path: "times[]", same: true },
+  };
+  const fare = (value: number, reward = 1) => ({
+    task: "fare",
+    source: price,
+    answer: { price: value },
+    reward,
+  });
+  const slots = (...values: string[]) => ({
+    task: "tables",
+    source: times,
+    answer: { times: values },
+  });
+  const arms = [
+    readBenchmarkArm({
+      name: "control",
+      path: job([
+        fare(327),
+        fare(327),
+        // A failed trial's answer neither sets the best nor matches it.
+        fare(100, 0),
+        slots("19:00", "20:00"),
+        slots("19:00"),
+        { task: "pinned" },
+      ]),
+    }),
+    readBenchmarkArm({
+      name: "treatment",
+      path: job([
+        fare(248),
+        fare(248.5),
+        fare(327),
+        slots("20:00", "19:00"),
+        slots("20:00", "19:00"),
+      ]),
+    }),
+  ];
+  const [control, treatment] = summarizePublicWeb(arms);
+  expect(control.runBest).toMatchObject({ passes: 1, intended: 5 });
+  expect(treatment.runBest).toMatchObject({
+    passes: 4,
+    intended: 5,
+    interval: wilson(4, 5),
+  });
+  const task = (name: string) =>
+    control.tasks.find((entry) => entry.task === name)?.runBest;
+  expect(task("fare")).toMatchObject({ passes: 0, intended: 3 });
+  expect(task("tables")).toMatchObject({ passes: 1, intended: 2 });
+  expect(task("pinned")).toMatchObject({ passes: 0, intended: 0 });
+  // The format-only pass rate still counts every well-formed answer.
+  expect(control.formatOnly).toMatchObject({ passes: 4, intended: 5 });
+
+  const report = renderMarkdown(
+    "public-web",
+    arms.map(summarizeArm),
+    undefined,
+    {},
+    arms,
+  );
+  expect(report).toContain(
+    "| fare | control | shape/range rules | 2/3 (21–94%) | 0/3 |",
+  );
+  expect(report).toContain(
+    "| pinned | control | pinned rules | 1/1 (21–100%) | — |",
+  );
+
+  // Two answers given equally often leave no best answer, so the task is not scored.
+  const tied = summarizePublicWeb([
+    readBenchmarkArm({
+      name: "control",
+      path: job([slots("19:00"), slots("20:00")]),
+    }),
+  ])[0];
+  expect(tied.runBest).toMatchObject({ passes: 0, intended: 0, unresolved: 1 });
+  expect(tied.tasks[0].runBest.unresolved).toBe(1);
 });
 
 test("interval and sign-test statistics", () => {
