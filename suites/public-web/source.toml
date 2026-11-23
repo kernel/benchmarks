@@ -12,6 +12,20 @@ tasks = [
   "steam-compare-series",
   # No tool at this revision reads a release, so treatment should gain nothing here.
   "github-latest-release",
+  "doordash-pizza-near-address",
+  "youtube-video-details",
+  "shopify-basic-monthly-price",
+  # The right answer to these changes too often to pin, so the report compares each trial's
+  # answer with the best one in the run.
+  "airbnb-cheapest-well-rated",
+  "amazon-cheapest-well-rated",
+  "booking-cheapest-room",
+  "frontier-cheapest-fare",
+  "southwest-cheapest-fare",
+  "united-cheapest-fare",
+  "stubhub-cheapest-pair",
+  "marriott-cheapest-rate",
+  "opentable-available-times",
 ]
 
 # A trial whose recorded model cost exceeds this is not counted as a pass. It matches the

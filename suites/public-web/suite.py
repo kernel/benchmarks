@@ -151,5 +151,9 @@ def _write(task_source: Path, task_dir: Path, source: Path, sha: str, max_cost_u
             }
         ],
     }
+    # The report compares answers across trials with this rule, including for a task whose
+    # trials all failed before grading.
+    if intent.get("agreement"):
+        config["metadata"]["agreement"] = intent["agreement"]
     (task_dir / "task.toml").write_text(tomlkit.dumps(config))
     return task_dir

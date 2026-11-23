@@ -199,6 +199,43 @@ function passRate(groups: ReturnType<typeof passesByGrading>, known: boolean) {
   };
 }
 
+// Passing trials that gave the run's best answer, over the intended trials of the tasks that
+// have one.
+function runBestRate(
+  trials: BenchmarkTrial[],
+  best: RunBest,
+  expected: ExpectedTrials,
+  known: boolean,
+) {
+  const tasks = [
+    ...new Set([
+      ...expected.counts.keys(),
+      ...trials.map((trial) => trial.taskName),
+    ]),
+  ];
+  const passes = trials.filter((trial) => best.matched.has(trial)).length;
+  const intended = known
+    ? tasks
+        .filter((task) => best.resolved.has(task))
+        .reduce(
+          (sum, task) =>
+            sum +
+            (expected.counts.get(task) ??
+              trials.filter((trial) => trial.taskName === task).length),
+          0,
+        )
+    : null;
+  return {
+    passes,
+    intended,
+    interval: intended === null ? undefined : wilson(passes, intended),
+    // Tasks that compare answers but whose answers have no single most common one.
+    unresolved: tasks.filter(
+      (task) => best.compared.has(task) && !best.resolved.has(task),
+    ).length,
+  };
+}
+
 // Trials that invoked a tool of one kind, and those where an invocation succeeded.
 function toolUse(trials: BenchmarkTrial[], kind: "injected" | "native") {
   return {
@@ -215,6 +252,11 @@ export function publicWebStats(
   trials: BenchmarkTrial[],
   gradings: Map<string, string> = taskGradings(trials),
   expected: ExpectedTrials = { counts: new Map(), total: trials.length },
+  best: RunBest = {
+    compared: new Set(),
+    resolved: new Set(),
+    matched: new Set(),
+  },
 ) {
   const costs = values(trials, (trial) => trial.metrics.costUsd);
   const byGrading = passesByGrading(trials, gradings, expected);
@@ -240,6 +282,7 @@ export function publicWebStats(
       byGrading.filter((group) => group.grading === "shape/range rules"),
       known,
     ),
+    runBest: runBestRate(trials, best, expected, known),
     interval:
       expected.total === null
         ? undefined
@@ -301,6 +344,7 @@ export function summarizePublicWeb(arms: BenchmarkArm[]) {
       if (grading) gradings.set(task, grading);
     }
   }
+  const best = runBest(arms);
   return arms.map((arm) => {
     const counts = new Map(
       Object.entries(arm.taskPlan).map(([task, plan]) => [task, plan.attempts]),
@@ -314,10 +358,12 @@ export function summarizePublicWeb(arms: BenchmarkArm[]) {
     return {
       arm: arm.name,
       configuration: summarizeArm(arm).configuration,
-      ...publicWebStats(arm.trials, gradings, {
-        counts,
-        total: arm.nTotalTrials,
-      }),
+      ...publicWebStats(
+        arm.trials,
+        gradings,
+        { counts, total: arm.nTotalTrials },
+        best,
+      ),
       tasks: tasks.map((task) => {
         const trials = arm.trials.filter((trial) => trial.taskName === task);
         const total =
@@ -329,10 +375,12 @@ export function summarizePublicWeb(arms: BenchmarkArm[]) {
           placebo:
             arm.taskPlan[task]?.metadata.stage === "gap" ||
             trials.some(placebo),
-          ...publicWebStats(trials, gradings, {
-            counts: new Map([[task, total ?? trials.length]]),
-            total,
-          }),
+          ...publicWebStats(
+            trials,
+            gradings,
+            { counts: new Map([[task, total ?? trials.length]]), total },
+            best,
+          ),
         };
       }),
     };
@@ -379,6 +427,69 @@ interface Pair {
 
 const answer = (trial: BenchmarkTrial) =>
   readJsonIfPresent(join(trial.dir, "steps/run/verifier/grade.json")).answer;
+const answerSet = (trial: BenchmarkTrial, path: string) =>
+  JSON.stringify(resolvePath(answer(trial), path).map(canonical).sort());
+const answerValue = (trial: BenchmarkTrial, path: string) =>
+  number(resolvePath(answer(trial), path)[0]);
+
+interface RunBest {
+  // Tasks that define how answers compare, those of them that have a best answer, and the
+  // passing trials that gave it.
+  compared: Set<string>;
+  resolved: Set<string>;
+  matched: Set<BenchmarkTrial>;
+}
+
+// A task's answers can change too often to pin, such as a cheapest fare, so its passing
+// trials are compared with each other across every arm: the best is the lowest (or highest)
+// value any of them reported, within the task's tolerance, or with `same` the answer most of
+// them gave. With no single most common answer a `same` task has no best answer.
+function runBest(arms: BenchmarkArm[]): RunBest {
+  const rules = new Map<string, unknown>();
+  for (const arm of arms) {
+    for (const trial of arm.trials)
+      if (trial.taskInfo.agreement)
+        rules.set(trial.taskName, trial.taskInfo.agreement);
+    for (const [task, plan] of Object.entries(arm.taskPlan))
+      if (plan.metadata.agreement) rules.set(task, plan.metadata.agreement);
+  }
+  const best: RunBest = {
+    compared: new Set(),
+    resolved: new Set(),
+    matched: new Set(),
+  };
+  for (const [task, rule] of rules) {
+    const { path, better, tolerance, same } = object(rule);
+    if (typeof path !== "string") continue;
+    best.compared.add(task);
+    const trials = arms
+      .flatMap((arm) => arm.trials)
+      .filter((trial) => trial.taskName === task && passed(trial));
+    if (same) {
+      const counts = new Map<string, number>();
+      for (const trial of trials) {
+        const set = answerSet(trial, path);
+        counts.set(set, (counts.get(set) ?? 0) + 1);
+      }
+      const [top, next] = [...counts].sort((a, b) => b[1] - a[1]);
+      if (top && next && top[1] === next[1]) continue;
+      for (const trial of trials)
+        if (answerSet(trial, path) === top?.[0]) best.matched.add(trial);
+    } else {
+      const sign = better === "lower" ? 1 : -1;
+      const scored = trials.flatMap((trial) => {
+        const value = answerValue(trial, path);
+        return value === undefined ? [] : [{ trial, value: value * sign }];
+      });
+      const lowest = Math.min(...scored.map((score) => score.value));
+      for (const score of scored)
+        if (score.value - lowest <= (number(tolerance) ?? 0))
+          best.matched.add(score.trial);
+    }
+    best.resolved.add(task);
+  }
+  return best;
+}
 
 // A pair's trials run back to back, so when both pass but the best value differs, the worse
 // arm missed it; with `same`, differing answers mean one arm was wrong, though not which.
@@ -386,19 +497,19 @@ function agreementStats(pairs: Pair[], rule: unknown) {
   const { path, better, tolerance, same } = object(rule);
   if (typeof path !== "string") return undefined;
   if (same) {
-    const set = (trial: BenchmarkTrial) =>
-      JSON.stringify(resolvePath(answer(trial), path).map(canonical).sort());
     return {
       checked: pairs.length,
       differed: pairs.filter(
-        (pair) => set(pair.baseline) !== set(pair.candidate),
+        (pair) =>
+          answerSet(pair.baseline, path) !== answerSet(pair.candidate, path),
       ).length,
     };
   }
-  const value = (trial: BenchmarkTrial) =>
-    number(resolvePath(answer(trial), path)[0]);
   const gaps = pairs.flatMap((pair) => {
-    const [base, other] = [value(pair.baseline), value(pair.candidate)];
+    const [base, other] = [
+      answerValue(pair.baseline, path),
+      answerValue(pair.candidate, path),
+    ];
     return base === undefined || other === undefined
       ? []
       : [(other - base) * (better === "lower" ? 1 : -1)];
@@ -609,6 +720,7 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
         "Recorded / intended",
         "Checked pass (95% CI)",
         "Format-only pass",
+        "Matched run's best answer (95% CI)",
         "Passes by grading",
         "Stopped by",
         "Flagged for review",
@@ -621,6 +733,7 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
         s.formatOnly.intended === null
           ? "—"
           : `${s.formatOnly.passes}/${s.formatOnly.intended}`,
+        rate(s.runBest),
         s.passesByGrading
           .map((g) => `${g.grading} ${g.passes}/${g.intended ?? "?"}`)
           .join(" · ") || "—",
@@ -669,6 +782,7 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
         "Arm",
         "Grading",
         "Pass / intended (95% CI)",
+        "Matched run's best answer",
         "Stopped by",
         "Median agent time",
         "Median agent time (passes)",
@@ -686,6 +800,11 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
             intended: t.intended,
             interval: t.interval,
           }),
+          t.runBest.unresolved
+            ? "no single answer"
+            : t.runBest.intended
+              ? `${t.runBest.passes}/${t.runBest.intended}`
+              : "—",
           stops(t.stops),
           seconds(t.medianAgentMs),
           seconds(t.medianPassedAgentMs),
@@ -694,6 +813,8 @@ export function renderPublicWeb(arms: BenchmarkArm[]): string {
     ),
     "",
     "Checked pass counts only tasks whose answer is checked against the page's end state or a pinned value, with a 95% Wilson interval over intended trials. Planned task gradings and attempt counts keep setup failures and missing trials in the denominator. Rates are unavailable when an older run lacks enough task-plan metadata to determine its denominators; unknown grading is never counted as format-only. A format-only pass, on a task with shape/range rules, shows a well-formed, in-range answer and nothing about whether it is true, and pinned-answer rules do not independently verify every returned fact. A pass also needs the agent to have used its assigned browser toolset and to have stayed within the task's spend limit. A rejected-call trial made a call its arm does not permit; the proxy blocked the call, which does not fail the trial.",
+    "",
+    "Matched run's best answer covers the tasks whose best answer changes too often to pin, such as a cheapest fare, where the verifier cannot tell whether a well-formed answer is the best one. A trial counts when it passed and gave the best answer any passing trial in this report gave for its task, within the task's tolerance: the lowest price, or, where a task has one right answer, the answer most passing trials gave. It compares trials with each other and not with the site, so one wrong outlier can set the bar, answers can move while a run is in progress, and the rate depends on which arms the report includes. A task whose answers have no single most common one is left out.",
     "",
     "Stopped by counts trials that did not pass for a reason other than a wrong answer: blocked, site error and Kernel error are the agent's own report of what stopped it, page unreadable means the page could not be read for the end-state check, call cap means the task's browser-call limit ran out, over spend limit means the recorded model cost exceeded the task's limit, and errored trials never got a fair run, such as a failed setup or a model provider that rejected the agent's requests.",
     "",
